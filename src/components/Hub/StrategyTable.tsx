@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import type { Hero, EquipmentSlot, Item, TemperamentType } from '../../types/game';
 import { Sword, Shield, Crown, Footprints, ShieldAlert, Sparkles, AlertCircle, Plus, X, Award, ShieldCheck } from 'lucide-react';
+import { ItemTooltip } from './ItemTooltip';
 
 const slotIcons: Record<EquipmentSlot, any> = {
   helm: Crown,
@@ -27,8 +28,8 @@ const getAvatarPath = (heroClass: string) => {
 };
 
 const getClassName = (heroClass: string) => {
-  if (heroClass === 'WIZARD') return 'SORCERESS';
-  return heroClass;
+  if (heroClass === 'WARRIOR') return 'Warrior Chef';
+  return heroClass.charAt(0) + heroClass.slice(1).toLowerCase();
 };
 
 
@@ -47,6 +48,20 @@ export const StrategyTable: React.FC = () => {
 
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>('hero_ranger');
   const [selectedBagItem, setSelectedBagItem] = useState<Item | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+    setMouseCoords(null);
+  };
 
   const selectedHero = roster.find(h => h.character_id === selectedHeroId) || null;
   const maxSquadSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
@@ -306,63 +321,68 @@ export const StrategyTable: React.FC = () => {
                 
                 const isSelectedForEquip = selectedBagItem && selectedBagItem.type === slot;
 
-                return (
-                  <div 
-                    key={slot}
-                    className={`border p-3 rounded-lg flex flex-col gap-2 transition relative ${
-                      item 
-                        ? item.rarity === 'Legendary' ? 'border-amber-500 bg-amber-950/10'
-                          : item.rarity === 'Epic' ? 'border-purple-500 bg-purple-950/10'
-                          : item.rarity === 'Rare' ? 'border-blue-500 bg-blue-950/10'
-                          : item.rarity === 'Uncommon' ? 'border-green-500 bg-green-950/10'
-                          : 'border-gray-700 bg-gray-950/30'
-                        : isSelectedForEquip ? 'border-dashed border-amber-400 bg-amber-500/5 animate-pulse'
-                        : 'border-gray-800 bg-black/40'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold flex items-center gap-1">
-                        <Icon size={12} className="text-gray-400" /> {slot}
-                      </span>
-                      {item && (
-                        <button 
-                          className="text-gray-500 hover:text-red-500 text-[10px] font-fantasy"
-                          onClick={() => equipItem(selectedHeroId!, slot, null)}
+
+
+                  return (
+                    <div 
+                      key={slot}
+                      onMouseEnter={(e) => item && handleMouseEnterItem(item, e)}
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={handleMouseLeaveItem}
+                      className={`border p-3 rounded-lg flex flex-col gap-2 transition relative ${
+                        item 
+                          ? item.rarity === 'Legendary' ? 'border-amber-500 bg-amber-950/10'
+                            : item.rarity === 'Epic' ? 'border-purple-500 bg-purple-950/10'
+                            : item.rarity === 'Rare' ? 'border-blue-500 bg-blue-950/10'
+                            : item.rarity === 'Uncommon' ? 'border-green-500 bg-green-950/10'
+                            : 'border-gray-700 bg-gray-950/30'
+                          : isSelectedForEquip ? 'border-dashed border-amber-400 bg-amber-500/5 animate-pulse'
+                          : 'border-gray-800 bg-black/40'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold flex items-center gap-1">
+                          <Icon size={12} className="text-gray-400" /> {slot}
+                        </span>
+                        {item && (
+                          <button 
+                            className="text-gray-500 hover:text-red-500 text-[10px] font-fantasy"
+                            onClick={() => equipItem(selectedHeroId!, slot, null)}
+                          >
+                            Unequip
+                          </button>
+                        )}
+                      </div>
+
+                      {item ? (
+                        <div className="flex flex-col">
+                          <div className={`font-fantasy text-sm ${
+                            item.rarity === 'Legendary' ? 'text-legendary'
+                              : item.rarity === 'Epic' ? 'text-epic'
+                              : item.rarity === 'Rare' ? 'text-rare'
+                              : item.rarity === 'Uncommon' ? 'text-uncommon'
+                              : 'text-white'
+                          }`}>{item.name}</div>
+                          
+                          <div className="text-[10px] text-gray-400 mt-1">
+                            {item.stats.hp && <div>+{item.stats.hp} Health</div>}
+                            {item.stats.damage && <div>+{item.stats.damage} Damage</div>}
+                            {item.stats.armor && <div>+{item.stats.armor} Armor</div>}
+                            {item.stats.atkSpeed && <div>+{Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className={`text-xs text-gray-600 italic py-2 cursor-pointer ${
+                            isSelectedForEquip ? 'text-amber-400 font-bold' : ''
+                          }`}
+                          onClick={() => isSelectedForEquip && handleEquip(slot)}
                         >
-                          Unequip
-                        </button>
+                          {isSelectedForEquip ? 'Click to Equip Selected' : 'Empty Slot'}
+                        </div>
                       )}
                     </div>
-
-                    {item ? (
-                      <div className="flex flex-col">
-                        <div className={`font-fantasy text-sm ${
-                          item.rarity === 'Legendary' ? 'text-legendary'
-                            : item.rarity === 'Epic' ? 'text-epic'
-                            : item.rarity === 'Rare' ? 'text-rare'
-                            : item.rarity === 'Uncommon' ? 'text-uncommon'
-                            : 'text-white'
-                        }`}>{item.name}</div>
-                        
-                        <div className="text-[10px] text-gray-400 mt-1">
-                          {item.stats.hp && <div>+{item.stats.hp} Health</div>}
-                          {item.stats.damage && <div>+{item.stats.damage} Damage</div>}
-                          {item.stats.armor && <div>+{item.stats.armor} Armor</div>}
-                          {item.stats.atkSpeed && <div>+{Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        className={`text-xs text-gray-600 italic py-2 cursor-pointer ${
-                          isSelectedForEquip ? 'text-amber-400 font-bold' : ''
-                        }`}
-                        onClick={() => isSelectedForEquip && handleEquip(slot)}
-                      >
-                        {isSelectedForEquip ? 'Click to Equip Selected' : 'Empty Slot'}
-                      </div>
-                    )}
-                  </div>
-                );
+                  );
               })}
             </div>
 
@@ -447,9 +467,14 @@ export const StrategyTable: React.FC = () => {
 
             const isSelected = selectedBagItem?.id === item.id;
             
+
+
             return (
               <div 
                 key={item.id}
+                onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeaveItem}
                 className={`aspect-square border rounded flex items-center justify-center cursor-pointer transition p-1 relative ${
                   item.rarity === 'Legendary' ? 'border-legendary bg-amber-950/20'
                     : item.rarity === 'Epic' ? 'border-epic bg-purple-950/20'
@@ -508,6 +533,7 @@ export const StrategyTable: React.FC = () => {
           </div>
         )}
       </div>
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };

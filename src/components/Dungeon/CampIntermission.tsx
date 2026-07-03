@@ -29,7 +29,7 @@ export const CampIntermission: React.FC = () => {
     roster,
     squad,
     equipItem,
-    campHealHero,
+    campHealAllHeroes,
     campReviveHero,
     advanceChamber
   } = useGame();
@@ -58,10 +58,13 @@ export const CampIntermission: React.FC = () => {
     setSelectedBagItemId(null);
   };
 
-  const handleHeal = (heroId: string) => {
-    if (healedHeroes.includes(heroId)) return;
-    campHealHero(heroId);
-    setHealedHeroes([...healedHeroes, heroId]);
+  const handleHealAll = () => {
+    if (healedHeroes.length > 0) return;
+    campHealAllHeroes();
+    const livingIds = Object.keys(activeRun.livingSquad).filter(
+      id => activeRun.livingSquad[id].hp > 0
+    );
+    setHealedHeroes(livingIds);
   };
 
   const handleRevive = (heroId: string) => {
@@ -164,9 +167,16 @@ export const CampIntermission: React.FC = () => {
               })}
             </div>
 
-            <div className="campfire-fire-pit">
+            <div
+              className={`campfire-fire-pit ${healedHeroes.length > 0 ? 'fire-used' : ''}`}
+              onClick={handleHealAll}
+              style={{ cursor: healedHeroes.length > 0 ? 'default' : 'pointer' }}
+            >
               <div className="fire-pit-glow" />
               <img src="/campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
+              {healedHeroes.length > 0 && (
+                <div className="campfire-rested-label">Rested</div>
+              )}
             </div>
 
             {/* Deploy/Embark button */}
@@ -221,26 +231,6 @@ export const CampIntermission: React.FC = () => {
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Healing at campfire */}
-                <div className="camp-campfire-actions">
-                  {activeRun.livingSquad[selectedHero.character_id]?.hp > 0 ? (
-                    <div className="camp-rest-action-card">
-                      <p className="camp-rest-desc">Resting by the fire restores +30 HP to this hero.</p>
-                      <button
-                        disabled={healedHeroes.includes(selectedHero.character_id)}
-                        className="camp-action-button"
-                        onClick={() => handleHeal(selectedHero.character_id)}
-                      >
-                        {healedHeroes.includes(selectedHero.character_id) ? 'Rested & Recovered' : 'Rest at Campfire (Free)'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="camp-rest-action-card deceased">
-                      <p className="camp-rest-desc" style={{ color: '#f87171' }}>This ally is deceased. Use a resurrection scroll to revive them.</p>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -300,29 +290,26 @@ export const CampIntermission: React.FC = () => {
         </div>
       </div>
 
-      {/* Revive Confirm Overlay */}
+      {/* Revive Confirm Modal */}
       {showReviveModal && selectedHero && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="glass-panel max-w-sm w-full p-6 border-red-500 flex flex-col gap-4 text-center">
-            <Heart size={36} className="text-red-500 animate-bounce mx-auto" />
-            <h3 className="text-xl font-fantasy text-red-500 m-0">Revive Fallen Ally</h3>
-            <p className="text-xs text-gray-400">
-              Reviving **{selectedHero.class}** will consume **1 Resurrection Scroll**. Do you wish to proceed?
+        <div className="menu-modal-overlay">
+          <div className="menu-modal-card">
+            <Heart size={36} className="text-green-500 mb-2 animate-bounce" />
+            <h4 className="menu-modal-title">Revive Fallen Ally?</h4>
+            <p className="menu-modal-desc">
+              Reviving <strong>{selectedHero.class}</strong> will consume <strong>1 Resurrection Scroll</strong>.<br />
+              Do you wish to proceed?
             </p>
-            <div className="text-[10px] text-gray-500">
+            <p className="menu-modal-desc" style={{ marginTop: '-12px' }}>
               Scrolls remaining: {activeRun.scrollOfResurrectionCount}
-            </div>
-
-            <div className="flex gap-4 mt-2 justify-center">
-              <button
-                className="px-4 py-2 bg-gray-800 text-white rounded text-xs font-fantasy"
-                onClick={() => setShowReviveModal(false)}
-              >
+            </p>
+            <div className="menu-modal-actions">
+              <button className="modal-cancel-btn" onClick={() => setShowReviveModal(false)}>
                 Cancel
               </button>
               <button
+                className="modal-confirm-health-btn"
                 disabled={activeRun.scrollOfResurrectionCount <= 0}
-                className="px-4 py-2 bg-red-600 text-white rounded text-xs font-fantasy font-bold disabled:opacity-40"
                 onClick={() => handleRevive(selectedHero.character_id)}
               >
                 Revive

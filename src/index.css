@@ -276,7 +276,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
 /* Town Board (Three columns) */
 .town-board {
   display: grid;
-  grid-template-columns: 260px 380px 1fr;
+  grid-template-columns: 260px 390px 1fr;
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -646,17 +646,20 @@ h1, h2, h3, h4, h5, .font-fantasy {
   border: 2px solid #c5a880;
   border-radius: 8px;
   padding: 10px;
-  flex: 0 0 220px;
-  width: 220px;
+  flex: 0 0 165px;
+  width: 165px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .stat-base-label {
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca3af;
   opacity: 0.65;
   font-weight: normal;
-  margin-left: 4px;
+  margin-left: 0;
+  display: block;
+  line-height: 1;
+  margin-top: 1px;
 }
 
 .hero-stats-title {
@@ -690,14 +693,18 @@ h1, h2, h3, h4, h5, .font-fantasy {
 
 .hero-stat-label {
   font-family: 'Almendra', serif;
-  font-size: 12px;
+  font-size: 14px;
   color: #9ca3af;
 }
 
 .hero-stat-value {
   font-family: 'Almendra', serif;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
 }
 
 .hero-stat-value.green { color: #4ade80; }
@@ -887,6 +894,85 @@ h1, h2, h3, h4, h5, .font-fantasy {
   font-family: 'Almendra', serif;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.gear-tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 50;
+  min-width: 220px;
+  padding: 10px 14px;
+  background: #090a0f;
+  border: 1px solid var(--accent-gold);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+
+.gear-tooltip.tooltip-left {
+  left: auto;
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.gear-tooltip.tooltip-right {
+  left: calc(100% + 12px);
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.gear-tooltip.tooltip-top {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+}
+
+.gear-tooltip.tooltip-bottom {
+  left: 50%;
+  right: auto;
+  top: calc(100% + 12px);
+  bottom: auto;
+  transform: translateX(-50%);
+}
+
+.gear-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Almendra', serif;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.gear-tooltip-rarity {
+  font-size: 0.65rem;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.gear-tooltip-divider {
+  height: 1px;
+  background: rgba(197, 168, 128, 0.2);
+  margin: 6px 0;
+}
+
+.gear-tooltip-stat {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  font-family: 'Almendra', serif;
+}
+
+.gear-tooltip-weight {
+  font-size: 0.65rem;
+  color: #718096;
+  font-family: 'Almendra', serif;
 }
 
 /* Yellow outline panel (Right Dynamic UI Space) */
@@ -2109,7 +2195,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: 220px;
+  height: 500px;
   box-sizing: border-box;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
@@ -2352,6 +2438,31 @@ h1, h2, h3, h4, h5, .font-fantasy {
   align-items: center;
   justify-content: center;
   margin: 10px 0;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.campfire-fire-pit.fire-used {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.campfire-fire-pit:not(.fire-used):hover {
+  filter: brightness(1.15);
+}
+
+.campfire-rested-label {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Almendra', serif;
+  font-size: 14px;
+  color: #4ade80;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  z-index: 3;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
 }
 
 .fire-pit-glow {
@@ -3717,8 +3828,8 @@ h1, h2, h3, h4, h5, .font-fantasy {
 }
 
 .slot-hero-circle {
-  width: 48px;
-  height: 48px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   border: 2px solid #4a3e2e;
   background: #0f1118;
@@ -3734,8 +3845,8 @@ h1, h2, h3, h4, h5, .font-fantasy {
 }
 
 .slot-hero-sprite {
-  width: 42px;
-  height: 42px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
   object-fit: cover;
   image-rendering: crisp-edges;
@@ -3988,6 +4099,26 @@ h1, h2, h3, h4, h5, .font-fantasy {
   border-radius: 4px;
   padding: 6px 16px;
   cursor: pointer;
+}
+
+.modal-confirm-health-btn {
+  font-family: 'Almendra', serif;
+  font-size: 10px;
+  color: #fff;
+  background: #1a6b3a;
+  border: 1px solid #38a169;
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.modal-confirm-health-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-confirm-health-btn:hover:not(:disabled) {
+  background: #22753f;
 }
 
 /* Save & Exit button in TownScene */
@@ -4316,5 +4447,59 @@ h1, h2, h3, h4, h5, .font-fantasy {
     opacity: 1;
     transform: translateY(3px);
   }
+}
+
+/* Tooltip styling for Hero Stats */
+.has-tooltip {
+  position: relative;
+  cursor: help;
+}
+
+.tooltip-box {
+  visibility: hidden;
+  position: absolute;
+  right: 108%; /* Position to the left of the stats row with clear margin */
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(15, 12, 8, 0.95);
+  border: 1px solid var(--accent-gold);
+  color: #e2e8f0;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: 'Almendra', serif;
+  font-size: 13px;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+  pointer-events: none;
+}
+
+/* Tooltip arrow pointing right */
+.tooltip-box::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent transparent var(--accent-gold);
+}
+
+.has-tooltip:hover .tooltip-box {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(-50%) translateX(-4px);
+}
+
+.tooltip-base-label {
+  font-size: 11px;
+  color: #9ca3af;
+  opacity: 0.65;
+  font-weight: normal;
+  margin-left: 4px;
 }
 

@@ -4,7 +4,6 @@ import { MainMenu } from './components/Hub/MainMenu';
 import { TownScene } from './components/Hub/TownScene';
 import { CombatSimulation } from './components/Dungeon/CombatSimulation';
 import { LevelUpDraft } from './components/Dungeon/LevelUpDraft';
-import { CampIntermission } from './components/Dungeon/CampIntermission';
 import { RunSummaryModal } from './components/Dungeon/RunSummaryModal';
 import { DialogueOverlay } from './components/Hub/DialogueOverlay';
 import './App.css';
@@ -28,13 +27,13 @@ const MainAppContent: React.FC = () => {
   // If in a run, render run layout
   if (activeRun) {
     return (
-      <div className="min-h-screen bg-neutral-950 p-6 flex flex-col gap-6 select-none">
+      <div className="min-h-screen bg-neutral-950 p-6 flex flex-col gap-6 select-none relative">
         <LevelUpDraft />
         
-        {activeRun.currentChamber === 5 ? (
-          <CampIntermission />
-        ) : (
-          <CombatSimulation />
+        <CombatSimulation />
+
+        {activeDialogue && (
+          <DialogueOverlay dialogue={activeDialogue} onComplete={showNextDialogue} />
         )}
       </div>
     );

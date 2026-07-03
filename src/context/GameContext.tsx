@@ -96,6 +96,7 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
 
 interface GameContextProps {
   roster: Hero[];
+  setRoster: React.Dispatch<React.SetStateAction<Hero[]>>;
   sharedBag: SharedBag;
   gold: number;
   runsCount: number;
@@ -128,6 +129,7 @@ interface GameContextProps {
   advanceChamber: () => void;
   triggerDraftChoice: (choiceIndex: number) => void;
   campHealHero: (heroId: string) => void;
+  campHealAllHeroes: () => void;
   campReviveHero: (heroId: string) => void;
   addRunLootToBag: (item: Item) => void;
   addRunGold: (amount: number) => void;
@@ -175,7 +177,7 @@ const INITIAL_ROSTER: Hero[] = [
     character_id: 'hero_warrior',
     class: 'WARRIOR',
     unlocked: false,
-    base_stats: { hp: 160, armor_mult: 1.25, speed_mult: 0.85, atk_speed_mult: 0.85 },
+    base_stats: { hp: 200, armor_mult: 1.25, speed_mult: 1.02, atk_speed_mult: 0.85 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
@@ -408,6 +410,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return {
             ...defaultHero,
             ...hero,
+            base_stats: defaultHero.base_stats,
             equipment: { ...defaultEquip, ...sanitizedEquipment }
           };
         });
@@ -830,6 +833,23 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const cost = item.rarity === 'Legendary' ? 400 : item.rarity === 'Epic' ? 200 : item.rarity === 'Rare' ? 100 : item.rarity === 'Uncommon' ? 50 : 25;
     if (gold < cost) return;
+
+    // Handle consumables via their dedicated systems
+    if (item.type === 'consumable') {
+      if (item.name === 'Scroll of Resurrection') {
+        setGold(g => g - cost);
+        setNextRunScrolls(prev => prev + 1);
+        setShopInventory(prev => prev.filter((_, idx) => idx !== index));
+        return;
+      }
+      if (item.name === 'Elixir of Wrath') {
+        setGold(g => g - cost);
+        setNextRunBuffs(prev => [...prev, 'damage']);
+        setShopInventory(prev => prev.filter((_, idx) => idx !== index));
+        return;
+      }
+    }
+
     if (sharedBag.items.length >= sharedBag.max_slots) return;
 
     setGold(g => g - cost);
@@ -945,7 +965,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initialRun: DungeonRun = {
       currentBiome: 1,
-      currentChamber: 1, // 1: Intro, 2: Corridors/Maze, 3: Combat, 4: Boss, 5: Camp
+      currentChamber: 1, // 1: Intro, 2: Corridors/Maze, 3: Loot Chest, 4: Loot Chest, 5: Boss
       livingSquad,
       runBag: [],
       runGold: 0,
@@ -999,11 +1019,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!choice) return prev;
 
       // Apply the chosen stat increase to all living squad members matching the classTag (or all if general)
-      const updatedSquad = { ...prev.livingSquad };
-      for (const key in updatedSquad) {
-        const h = updatedSquad[key];
+      const updatedSquad: Record<string, any> = {};
+      for (const key in prev.livingSquad) {
+        const h = { ...prev.livingSquad[key] };
         const rosterHero = roster.find(rh => rh.character_id === h.character_id);
-        if (!rosterHero) continue;
+        if (!rosterHero) {
+          updatedSquad[key] = h;
+          continue;
+        }
 
         if (!choice.classTag || rosterHero.class === choice.classTag) {
           if (choice.type === 'stat') {
@@ -1011,11 +1034,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             h.maxHp = Math.round(h.maxHp * (1 + choice.value));
             h.hp = Math.round(h.hp * (1 + choice.value));
           } else if (choice.type === 'heal') {
-            h.hp = Math.min(h.maxHp, h.hp + Math.round(h.maxHp * choice.value));
+            if (h.hp > 0) {
+              h.hp = Math.min(h.maxHp, h.hp + Math.round(h.maxHp * choice.value));
+            }
           } else if (choice.type === 'skill') {
-            h.tempBuffs.push(`${choice.title} Buff`);
+            h.tempBuffs = [...h.tempBuffs, `${choice.title} Buff`];
           }
         }
+        updatedSquad[key] = h;
       }
 
       return {
@@ -1038,12 +1064,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!squadHero || squadHero.hp <= 0) return prev;
 
       const updatedSquad = { ...prev.livingSquad };
-      updatedSquad[heroId].hp = Math.min(squadHero.maxHp, squadHero.hp + Math.round(squadHero.maxHp * 0.35));
+      updatedSquad[heroId].hp = Math.min(squadHero.maxHp, squadHero.hp + Math.round(squadHero.maxHp * 0.20));
 
       return {
         ...prev,
         livingSquad: updatedSquad
       };
+    });
+  };
+
+  const campHealAllHeroes = () => {
+    setActiveRun(prev => {
+      if (!prev) return null;
+      const updatedSquad = { ...prev.livingSquad };
+      for (const heroId of Object.keys(updatedSquad)) {
+        const hero = updatedSquad[heroId];
+        if (hero && hero.hp > 0) {
+          hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * 0.20));
+        }
+      }
+      return { ...prev, livingSquad: updatedSquad };
     });
   };
 
@@ -1111,6 +1151,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const allChoices = [
           { title: 'Divine Shield', description: 'Grant Warrior +15% Health', classTag: 'WARRIOR' as HeroClass, type: 'stat' as const, value: 0.15 },
           { title: 'Shield Slam', description: 'Warrior attacks stun targets', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Vampiric Blade', description: 'Warrior gains +3% Life Steal', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.03 },
           { title: 'Sharpshooter', description: 'Grant Ranger +10% Damage', classTag: 'RANGER' as HeroClass, type: 'stat' as const, value: 0.10 },
           { title: 'Double Shot', description: 'Ranger fires twice as fast', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Mana Flow', description: 'Grant Wizard +20% Magical Power', classTag: 'WIZARD' as HeroClass, type: 'stat' as const, value: 0.20 },
@@ -1156,6 +1197,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const terminateRun = (success: boolean) => {
     if (!activeRun) return;
 
+    // Check if warrior survived boss fight (chamber 5 = boss)
+    let warriorSurvived = false;
+    if (activeRun.currentBiome === 1 && activeRun.currentChamber === 5 && success) {
+      const warriorStatus = activeRun.livingSquad['hero_warrior'];
+      if (warriorStatus && warriorStatus.hp > 0) {
+        warriorSurvived = true;
+      }
+    }
+
+    if (activeRun.currentBiome === 1 && activeRun.currentChamber === 5 && success && warriorSurvived) {
+      setQuestState(prev => ({ ...prev, warriorSurvivedBoss: true }));
+    }
+
     // Set the completed run summary first!
     setCompletedRunSummary({
       success,
@@ -1187,8 +1241,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check unlocks
     let newlyUnlockedClasses: string[] = [];
 
-    // Milestone 2: Wizard unlock on Biome 1 boss defeat
-    if (activeRun.currentBiome === 1 && activeRun.currentChamber === 4 && success) {
+    // Milestone 2: Wizard/Sorceress unlock on Biome 1 boss defeat (chamber 5)
+    if (activeRun.currentBiome === 1 && activeRun.currentChamber === 5 && success) {
       newlyUnlockedClasses.push('hero_wizard');
     }
 
@@ -1231,107 +1285,119 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 1. Check Chef Quest progression
     const step = questState.chefQuestStep;
-    if (step === 0) {
-      setQuestState({ chefQuestStep: 1 });
-      enqueueDialogue([
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Welcome back from the depths, Guildmaster... I must ask for your urgent aid."
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "My beloved daughter has gone missing in the forest biome! She went to gather wild mushrooms and herbs for our stews, but she hasn't returned..."
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "The dungeon is crawling with beasts. Please, if you find her, bring her back safely!"
-        }
-      ]);
-    } else if (step === 1) {
-      setQuestState({ chefQuestStep: 2 });
-      enqueueDialogue([
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "You're back! Tell me, did you find any sign of my daughter?"
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Nothing yet...? Oh, my heart grows heavier with each passing hour."
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "I heard rumors from other adventurers that the goblins have cages deep within the chamber ruins. I pray she is holding on. Please do not give up looking!"
-        }
-      ]);
-    } else if (step === 2) {
-      setQuestState({ chefQuestStep: 3 });
-      
-      // Unlock Warrior
-      setRoster(prev => prev.map(hero => {
+    const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+
+    if (currentBiome === 1 && currentChamber === 5 && success) {
+      // Biome 1 Boss defeated! (chamber 5 = boss fight)
+      if (!warriorUnlocked) {
+        // Rule 1: Defeated boss before warrior unlocked. Chef is thankful and joins!
+        setQuestState({ chefQuestStep: 3, warriorSurvivedBoss: false });
+        setRoster(prev => prev.map(hero => {
+          if (hero.character_id === 'hero_warrior') return { ...hero, unlocked: true };
+          return hero;
+        }));
+        setSquad(prev => {
+          const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+          if (prev.length < maxSlots && !prev.includes('hero_warrior')) {
+            return [...prev, 'hero_warrior'];
+          }
+          return prev;
+        });
+
+        enqueueDialogue([
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "Guildmaster! You... you defeated the boss and saved my daughter! She returned safely to the tavern."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "I used to be a Frontline Shield-Bearer of the Iron Vanguard. I'm hanging up my chef apron and joining your barracks right now. My seasoned shield is at your service!"
+          }
+        ]);
+      } else {
+        // Warrior was already unlocked.
+        setQuestState(prev => ({ ...prev, chefQuestStep: 3 }));
+      }
+    } else {
+      // Normal runs progression (not the boss run)
+      if (step === 0) {
+        setQuestState(prev => ({ ...prev, chefQuestStep: 1 }));
+        enqueueDialogue([
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "Welcome back from the depths, Guildmaster! You look like you've been seasoned, tenderized, and lightly seared out there."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "By the way... my beloved daughter went missing in the forest biome. She went out to pick wild rosemary for our garlic bread stews, and she hasn't come back yet."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "If you could keep a look out while you're down there, that would be gr-ate... get it? Like a cheese grater? Sorry, bad dad joke. But seriously, please find her!"
+          }
+        ]);
+      } else if (step === 1) {
+        setQuestState(prev => ({ ...prev, chefQuestStep: 2 }));
+        enqueueDialogue([
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "You're back! Still no sign of my daughter? Oh, my stews are tasting like sadness and over-salted worry."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "I heard rumors from other adventurers that the monsters have locked cages deep within the ruins. I pray she's holding on."
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "Please, check the cages in the dungeon ruins! I'll keep the stoves warm for you."
+          }
+        ]);
+      } else if (step === 2) {
+        // Normal rescue run complete (if they unlock him through the cages step)
+        setQuestState(prev => ({ ...prev, chefQuestStep: 3 }));
+        
+        enqueueDialogue([
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "I'm really worried about my daughter, mind if I join you? If you think my cooking skills are good, just wait till you see what I can do in battle!"
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "Before I retired to run this tavern, I was a Frontline WARRIOR of the Iron Vanguard. My shield is seasoned and ready to serve!"
+          },
+          {
+            speaker: "Town Chef",
+            portrait: "/warrior_chef.png",
+            text: "Let's go crack some monster skulls like eggs for a morning omelet! Let's get cooking!"
+          }
+        ]);
+
+        setRoster(prev => prev.map(hero => {
         if (hero.character_id === 'hero_warrior') {
           return { ...hero, unlocked: true };
         }
         return hero;
       }));
-      // Auto add to squad if slot available
-      setSquad(prev => {
-        const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
-        if (prev.length < maxSlots && !prev.includes('hero_warrior')) {
-          return [...prev, 'hero_warrior'];
-        }
-        return prev;
-      });
 
-      enqueueDialogue([
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Guildmaster! She's back! Your squad found her locked in that cage and broke her free!"
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Words cannot describe my gratitude. A simple chef's ladle is no way to repay you..."
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Before I ran this tavern, I was a Frontline Shield-Bearer for the Iron Vanguard. I hung up my shield years ago, but now I will raise it once more for your guild!"
-        },
-        {
-          speaker: "Town Chef",
-          portrait: "/warrior_chef.png",
-          text: "Let me join your squad as a WARRIOR class. I will stand at the front and shield our allies from harm!"
-        }
-      ]);
+      }
     }
 
-    // 2. Check Sorceress Unlock Dialogue
-    if (currentBiome === 1 && currentChamber === 4 && success) {
-      enqueueDialogue([
-        {
-          speaker: "Sorceress",
-          portrait: "/sorceress.png",
-          text: "Ah, the ones who vanquished the terror of the first biome..."
-        },
-        {
-          speaker: "Sorceress",
-          portrait: "/sorceress.png",
-          text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse."
-        },
-        {
-          speaker: "Sorceress",
-          portrait: "/sorceress.png",
-          text: "Now that you have shattered their control, I shall pledge my spells to your cause. Let us burn down what remains of these dungeons."
-        }
-      ]);
-    }
+    // 2. Sorceress unlock dialogue now handled in-dungeon (CombatSimulation boss death)
   };
 
   const talkToTownChef = () => {
@@ -1341,12 +1407,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "Welcome, Guildmaster! I'm in desperate need of aid."
+          text: "Ah, welcome to my tavern, traveler! I'm the Chef here, but my friends call me 'The Ladle of Justice.' Just kidding, they call me Bob."
         },
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "My daughter disappeared in the first Biome dungeon while gathering ingredients. Please keep an eye out for her!"
+          text: "If you're looking for the finest stew in the kingdom, you've come to the right place. I always say: a good soup is like a good shield—it keeps you warm and absorbs all the hits!"
+        },
+        {
+          speaker: "Town Chef",
+          portrait: "/warrior_chef.png",
+          text: "You should try my signature spicy mushroom stew sometime. It's so hot it'll clean your armor for you! Seriously, come by later when the hearth is ready."
         }
       ]);
     } else if (step === 1) {
@@ -1354,12 +1425,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "Have you seen any sign of her? The rumors say she ventured deep into the chambers..."
+          text: "Any sign of my little helper? She went out to gather wild rosemary and hasn't returned yet."
         },
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "Some travelers say they heard crying coming from a Locked Cage in the maze. Please, rescue her!"
+          text: "I heard rumors adventurers heard crying near a locked cage deep in the ruins. If you find her, I'll bake you the biggest garlic bread you've ever seen!"
         }
       ]);
     } else if (step === 2) {
@@ -1381,17 +1452,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "Oh! You found her, she's safe at home now! Words cannot express my gratitude."
+          text: "I'm really worried about my daughter, mind if I join you? If you think my cooking skills are good, just wait till you see what I can do in battle!"
         },
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "I used to be a Frontline Paladin of the Iron Vanguard before I picked up the ladle."
+          text: "Before I retired to run this tavern, I was a Frontline Shield-Bearer of the Iron Vanguard. My shield is seasoned and ready to serve!"
         },
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "Let me join your guild as a WARRIOR class to shield your squad from danger! I am at your service."
+          text: "Let's go crack some monster skulls like eggs for a morning omelet! Let's get cooking!"
         }
       ]);
     } else {
@@ -1430,6 +1501,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <GameContext.Provider value={{
       roster,
+      setRoster,
       sharedBag,
       gold,
       runsCount,
@@ -1458,6 +1530,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       advanceChamber,
       triggerDraftChoice,
       campHealHero,
+      campHealAllHeroes,
       campReviveHero,
       addRunLootToBag,
       addRunGold,

@@ -25,7 +25,8 @@ export const DialogueOverlay: React.FC<DialogueOverlayProps> = ({ dialogue, onCo
     if (typingTimer.current) clearInterval(typingTimer.current);
     
     typingTimer.current = setInterval(() => {
-      setDisplayedText((prev) => prev + fullText.charAt(index));
+      const char = fullText.charAt(index);
+      setDisplayedText((prev) => prev + char);
       index++;
       if (index >= fullText.length) {
         if (typingTimer.current) clearInterval(typingTimer.current);

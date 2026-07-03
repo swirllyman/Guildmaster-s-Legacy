@@ -228,7 +228,7 @@ export const MainMenu: React.FC = () => {
                     <span className="options-sub">Initial speed multiplier when entering chambers</span>
                   </div>
                   <div className="flex gap-1.5">
-                    {['1x', '2x', '4x'].map(speed => (
+                    {['1x', '2x', '3x', '5x', '10x'].map(speed => (
                       <button
                         key={speed}
                         onClick={() => {

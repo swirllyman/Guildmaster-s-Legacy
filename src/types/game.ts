@@ -102,6 +102,7 @@ export interface CompletedRunSummary {
 
 export interface NPCQuestState {
   chefQuestStep: number; // 0, 1, 2, 3 (Warrior unlock steps)
+  warriorSurvivedBoss?: boolean;
 }
 
 export interface DialogueLine {

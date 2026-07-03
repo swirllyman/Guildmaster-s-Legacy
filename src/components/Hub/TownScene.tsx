@@ -5,6 +5,9 @@ import { Blacksmith } from './Blacksmith';
 import { TownChef } from './TownChef';
 import type { EquipmentSlot, Item } from '../../types/game';
 import { Sword, Shield, Crown, Footprints, ShieldAlert, Award, ShieldCheck, HelpCircle } from 'lucide-react';
+import { ItemTooltip } from './ItemTooltip';
+
+
 
 export const TownScene: React.FC = () => {
   const {
@@ -25,6 +28,22 @@ export const TownScene: React.FC = () => {
   const [selectedSquadSlot, setSelectedSquadSlot] = useState<number | null>(0);
   const [activeHeroId, setActiveHeroId] = useState<string | null>('hero_ranger');
   const [selectedSlot, setSelectedSlot] = useState<EquipmentSlot | null>('weapon');
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+    setMouseCoords(null);
+  };
 
   const maxSquadSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
 
@@ -341,6 +360,9 @@ export const TownScene: React.FC = () => {
                 <div className="paperdoll-side-column">
                   <div 
                     onClick={() => setSelectedSlot('shoulders')}
+                    onMouseEnter={(e) => activeHero?.equipment?.shoulders && handleMouseEnterItem(activeHero.equipment.shoulders, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot ${selectedSlot === 'shoulders' ? 'active' : ''} ${hasUpgradeInBag('shoulders') ? 'upgrade-glow' : ''}`}
                   >
                     <ShieldAlert size={20} className={activeHero?.equipment?.shoulders ? 'occupied' : 'empty'} />
@@ -350,6 +372,9 @@ export const TownScene: React.FC = () => {
 
                   <div 
                     onClick={() => setSelectedSlot('gloves')}
+                    onMouseEnter={(e) => activeHero?.equipment?.gloves && handleMouseEnterItem(activeHero.equipment.gloves, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot ${selectedSlot === 'gloves' ? 'active' : ''} ${hasUpgradeInBag('gloves') ? 'upgrade-glow' : ''}`}
                   >
                     <ShieldAlert size={20} className={activeHero?.equipment?.gloves ? 'occupied' : 'empty'} />
@@ -362,6 +387,9 @@ export const TownScene: React.FC = () => {
                 <div className="paperdoll-center-column">
                   <div 
                     onClick={() => setSelectedSlot('helm')}
+                    onMouseEnter={(e) => activeHero?.equipment?.helm && handleMouseEnterItem(activeHero.equipment.helm, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot helm-slot ${selectedSlot === 'helm' ? 'active' : ''} ${hasUpgradeInBag('helm') ? 'upgrade-glow' : ''}`}
                   >
                     <Crown size={20} className={activeHero?.equipment?.helm ? 'occupied' : 'empty'} />
@@ -371,6 +399,9 @@ export const TownScene: React.FC = () => {
 
                   <div 
                     onClick={() => setSelectedSlot('chest')}
+                    onMouseEnter={(e) => activeHero?.equipment?.chest && handleMouseEnterItem(activeHero.equipment.chest, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot chest-slot ${selectedSlot === 'chest' ? 'active' : ''} ${hasUpgradeInBag('chest') ? 'upgrade-glow' : ''}`}
                   >
                     <Shield size={22} className={activeHero?.equipment?.chest ? 'occupied' : 'empty'} />
@@ -380,6 +411,9 @@ export const TownScene: React.FC = () => {
 
                   <div 
                     onClick={() => setSelectedSlot('pants')}
+                    onMouseEnter={(e) => activeHero?.equipment?.pants && handleMouseEnterItem(activeHero.equipment.pants, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot pants-slot ${selectedSlot === 'pants' ? 'active' : ''} ${hasUpgradeInBag('pants') ? 'upgrade-glow' : ''}`}
                   >
                     <ShieldCheck size={20} className={activeHero?.equipment?.pants ? 'occupied' : 'empty'} />
@@ -389,6 +423,9 @@ export const TownScene: React.FC = () => {
 
                   <div 
                     onClick={() => setSelectedSlot('boots')}
+                    onMouseEnter={(e) => activeHero?.equipment?.boots && handleMouseEnterItem(activeHero.equipment.boots, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot boots-slot ${selectedSlot === 'boots' ? 'active' : ''} ${hasUpgradeInBag('boots') ? 'upgrade-glow' : ''}`}
                   >
                     <Footprints size={20} className={activeHero?.equipment?.boots ? 'occupied' : 'empty'} />
@@ -401,6 +438,9 @@ export const TownScene: React.FC = () => {
                 <div className="paperdoll-side-column">
                   <div 
                     onClick={() => setSelectedSlot('weapon')}
+                    onMouseEnter={(e) => activeHero?.equipment?.weapon && handleMouseEnterItem(activeHero.equipment.weapon, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`paperdoll-slot ${selectedSlot === 'weapon' ? 'active' : ''} ${hasUpgradeInBag('weapon') ? 'upgrade-glow' : ''}`}
                   >
                     <Sword size={20} className={activeHero?.equipment?.weapon ? 'occupied' : 'empty'} />
@@ -413,6 +453,7 @@ export const TownScene: React.FC = () => {
                     <span className="slot-label-decorative">Off-hand</span>
                   </div>
                 </div>
+
               </div>
 
               {/* Hero Stats Panel */}
@@ -443,27 +484,22 @@ export const TownScene: React.FC = () => {
                             <span className="stat-base-label">(Base: {classBaseDmg})</span>
                           </span>
                         </div>
-                        <div className="hero-stat-row">
+                        <div className="hero-stat-row has-tooltip">
                           <span className="hero-stat-label">Attack Speed</span>
                           <span className="hero-stat-value gold">
                             {stats.atkSpeed}x
                             <span className="stat-base-label">(Base: {activeHero.base_stats.atk_speed_mult.toFixed(2)}x)</span>
                           </span>
+                          <div className="tooltip-box">
+                            Attack Cooldown: {atkCooldown}s <span className="tooltip-base-label">(Base: {baseAtkCooldown.toFixed(1)}s)</span>
+                          </div>
                         </div>
-                        <div className="hero-stat-row">
-                          <span className="hero-stat-label">Attack Cooldown</span>
-                          <span className="hero-stat-value white">
-                            {atkCooldown}s
-                            <span className="stat-base-label">(Base: {baseAtkCooldown.toFixed(1)}s)</span>
-                          </span>
-                        </div>
-                        <div className="hero-stat-row">
+                        <div className="hero-stat-row has-tooltip">
                           <span className="hero-stat-label">Armor Rating</span>
                           <span className="hero-stat-value blue">{stats.armor}</span>
-                        </div>
-                        <div className="hero-stat-row">
-                          <span className="hero-stat-label">Damage Reduction</span>
-                          <span className="hero-stat-value blue">{armorReduction}%</span>
+                          <div className="tooltip-box">
+                            Damage Reduction: {armorReduction}%
+                          </div>
                         </div>
                         <div className="hero-stat-row">
                           <span className="hero-stat-label">Move Speed</span>
@@ -499,32 +535,38 @@ export const TownScene: React.FC = () => {
                 {slotItems.length === 0 ? (
                   <div className="list-empty-text">No items in bag for this slot.</div>
                 ) : (
-                  slotItems.map(({ item, owner, selectable }) => (
-                    <div 
-                      key={item.id}
-                      onClick={() => selectable && handleEquipItem(item)}
-                      className={`list-item-card ${selectable ? 'selectable' : 'disabled'}`}
-                    >
-                      <div className="item-card-info">
-                        <div className={`item-card-name ${
-                          item.rarity === 'Legendary' ? 'text-legendary'
-                            : item.rarity === 'Epic' ? 'text-epic'
-                            : item.rarity === 'Rare' ? 'text-rare'
-                            : item.rarity === 'Uncommon' ? 'text-uncommon'
-                            : 'text-white'
-                        }`}>{item.name}</div>
-                        <div className="item-card-sub">{item.rarity} | {item.weight}</div>
+                  slotItems.map(({ item, owner, selectable }) => {
+                    return (
+                      <div 
+                        key={item.id}
+                        onClick={() => selectable && handleEquipItem(item)}
+                        onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={handleMouseLeaveItem}
+                        className={`list-item-card ${selectable ? 'selectable' : 'disabled'}`}
+                        style={{ position: 'relative' }}
+                      >
+                        <div className="item-card-info">
+                          <div className={`item-card-name ${
+                            item.rarity === 'Legendary' ? 'text-legendary'
+                              : item.rarity === 'Epic' ? 'text-epic'
+                              : item.rarity === 'Rare' ? 'text-rare'
+                              : item.rarity === 'Uncommon' ? 'text-uncommon'
+                              : 'text-white'
+                          }`}>{item.name}</div>
+                          <div className="item-card-sub">{item.rarity} | {item.weight}</div>
+                        </div>
+
+                        {owner && (
+                          <span className="item-card-owner-badge">Equipped by {owner}</span>
+                        )}
+
+                        {selectable && (
+                          <button className="item-card-equip-btn">Equip</button>
+                        )}
                       </div>
-
-                      {owner && (
-                        <span className="item-card-owner-badge">Equipped by {owner}</span>
-                      )}
-
-                      {selectable && (
-                        <button className="item-card-equip-btn">Equip</button>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             ) : (
@@ -692,6 +734,7 @@ export const TownScene: React.FC = () => {
           })}
         </div>
       </div>
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };

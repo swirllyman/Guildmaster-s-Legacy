@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useGame, generateRandomItem } from '../../context/GameContext';
-import type { EquipmentSlot } from '../../types/game';
+import type { EquipmentSlot, Item, DialogueLine } from '../../types/game';
 import { 
   ShieldAlert, 
   AlertCircle, 
@@ -27,7 +27,7 @@ interface GridPos {
 interface SimulatedEntity {
   id: string;
   name: string;
-  type: 'ranger' | 'warrior' | 'wizard' | 'rogue' | 'paladin' | 'druid' | 'necromancer' | 'enemy' | 'archer' | 'elite' | 'boss' | 'chest' | 'cage' | 'portal';
+  type: 'ranger' | 'warrior' | 'wizard' | 'rogue' | 'paladin' | 'druid' | 'necromancer' | 'enemy' | 'archer' | 'elite' | 'boss' | 'chest' | 'cage' | 'portal' | 'item_loot';
   gridX: number;
   gridY: number;
   posX: number; // canvas pixels x
@@ -38,9 +38,17 @@ interface SimulatedEntity {
   attackRange: number;
   attackCooldown: number;
   damage: number;
+  lifeSteal: number;
+  tempBuffs: string[];
   color: string;
   isDead: boolean;
   aggroed?: boolean; // Diablo style aggro
+  groupingMode?: boolean; // Stateful flag for hysteresis grouping behavior
+  groupingModeTimer?: number; // Minimum seconds to commit to walking back towards party
+  lootItem?: Item;
+  velX?: number;
+  velY?: number;
+  lootTimer?: number;
 }
 
 interface FloatingText {
@@ -54,6 +62,7 @@ interface FloatingText {
 const powerupDescriptions: Record<string, string> = {
   'Divine Shield': 'Grant Warrior +15% Health per stack',
   'Shield Slam': 'Warrior attacks stun targets per stack',
+  'Vampiric Blade': 'Warrior gains +3% Life Steal per stack',
   'Sharpshooter': 'Grant Ranger +10% Damage per stack',
   'Double Shot': 'Ranger attack speed +30% per stack (diminishing, capped at 75%)',
   'Mana Flow': 'Grant Sorceress +20% Magical Power per stack',
@@ -88,15 +97,19 @@ export const CombatSimulation: React.FC = () => {
   const {
     activeRun,
     roster,
+    setRoster,
     squad,
     equipItem,
-    campHealHero,
+    campHealAllHeroes,
     campReviveHero,
     addRunGold,
     addRunXp,
     addRunLootToBag,
     advanceChamber,
-    terminateRun
+    terminateRun,
+    enqueueDialogue,
+    activeDialogue,
+    questState
   } = useGame();
 
   const [combatLog, setCombatLog] = useState<string[]>(['Entering Chamber...']);
@@ -105,6 +118,7 @@ export const CombatSimulation: React.FC = () => {
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [activeToast, setActiveToast] = useState<{ text: string; type: 'gold' | 'xp' | 'alert' | 'death' | 'info' } | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
+  const combatLogRef = useRef<HTMLDivElement>(null);
 
   // 0 = idle, 1 = animating (fade + text), 2 = terminate
   const [deathSequencePhase, setDeathSequencePhase] = useState<0 | 1 | 2>(0);
@@ -124,6 +138,13 @@ export const CombatSimulation: React.FC = () => {
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
   }, []);
+
+  // Auto-scroll combat log to bottom
+  useEffect(() => {
+    if (combatLogRef.current) {
+      combatLogRef.current.scrollTop = combatLogRef.current.scrollHeight;
+    }
+  }, [combatLog]);
 
   // Camp states (pre-combat preparation phase)
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
@@ -153,6 +174,8 @@ export const CombatSimulation: React.FC = () => {
   const isPausedRef = useRef<boolean>(isPaused);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
   const activeRunRef = useRef(activeRun);
+  const bossDialogueShownRef = useRef<boolean>(false);
+  const activeDialogueRef = useRef(activeDialogue);
 
   useEffect(() => {
     isPausedRef.current = isPaused;
@@ -165,6 +188,10 @@ export const CombatSimulation: React.FC = () => {
   useEffect(() => {
     activeRunRef.current = activeRun;
   }, [activeRun]);
+
+  useEffect(() => {
+    activeDialogueRef.current = activeDialogue;
+  }, [activeDialogue]);
 
   // Campfire event handlers & helpers
   const handleHeroClick = (heroId: string) => {
@@ -185,10 +212,13 @@ export const CombatSimulation: React.FC = () => {
     return <IconComponent size={16} className={isOccupied ? 'text-amber-500' : 'text-gray-600'} />;
   };
 
-  const handleHeal = (heroId: string) => {
-    if (healedHeroes.includes(heroId)) return;
-    campHealHero(heroId);
-    setHealedHeroes([...healedHeroes, heroId]);
+  const handleHealAll = () => {
+    if (healedHeroes.length > 0) return;
+    campHealAllHeroes();
+    const livingIds = Object.keys(activeRun.livingSquad).filter(
+      id => activeRun.livingSquad[id].hp > 0
+    );
+    setHealedHeroes(livingIds);
   };
 
   const handleRevive = (heroId: string) => {
@@ -200,6 +230,14 @@ export const CombatSimulation: React.FC = () => {
     if (!activeRun) return;
     if (loopRef.current) cancelAnimationFrame(loopRef.current);
     
+    // Auto-collect any remaining loot entities on the ground
+    entitiesRef.current.forEach(ent => {
+      if (ent.type === 'item_loot' && !ent.isDead && ent.lootItem) {
+        addRunLootToBag(ent.lootItem);
+        setCombatLog(log => [...log, `🎁 Loot Collected: Found [${ent.lootItem?.name}] (${ent.lootItem?.rarity})!`].slice(-40));
+      }
+    });
+
     const roomType = activeRun.currentChamber;
     let goldScavenged = 30 + Math.round(Math.random() * 20) + activeRun.currentBiome * 10;
     let xpScavenged = 120 + Math.round(Math.random() * 40) + activeRun.currentBiome * 30;
@@ -213,17 +251,8 @@ export const CombatSimulation: React.FC = () => {
       `✨ Chamber Cleared! Scavenged ${goldScavenged} Gold and +${xpScavenged} XP.`
     ]);
 
-    if (roomType === 3) {
-      const item = generateRandomItem(activeRun.currentBiome);
-      addRunLootToBag(item);
-      setCombatLog(log => [...log, `🎁 Opened Scavenger Chest: Found [${item.name}] (${item.rarity})!`]);
-    } else if (roomType === 4) {
-      setCombatLog(log => [...log, `🔓 Rescue Cage broken! Cage warden slain.`]);
-    } else if (roomType === 5) {
-      const item = generateRandomItem(activeRun.currentBiome);
-      item.rarity = 'Legendary';
-      addRunLootToBag(item);
-      setCombatLog(log => [...log, `🏆 Gorgon Overlord Slain! Found Legendary loot: [${item.name}]!`]);
+    if (roomType === 5) {
+      setCombatLog(log => [...log, `🏆 Gorgon Overlord Slain! Expedition Successful!`]);
     }
 
     advanceChamber();
@@ -234,7 +263,7 @@ export const CombatSimulation: React.FC = () => {
   const selectedHero = roster.find(h => h.character_id === selectedHeroId) || null;
   const selectedBagItem = activeRun?.runBag.find(i => i.id === selectedBagItemId) || null;
 
-  const getAvatarPath = (heroClass: string) => {
+  const getAvatarPath = (type: string) => {
     const pathMap: Record<string, string> = {
       RANGER: '/ranger.png',
       WARRIOR: '/warrior_chef.png',
@@ -242,24 +271,34 @@ export const CombatSimulation: React.FC = () => {
       ROGUE: '/ranger.png',
       PALADIN: '/warrior.png',
       DRUID: '/ranger.png',
-      NECROMANCER: '/wizard.png'
+      NECROMANCER: '/wizard.png',
+      ENEMY: '/enemy_grunt.png',
+      ARCHER: '/enemy_archer.png',
+      ELITE: '/enemy_elite.png',
+      BOSS: '/enemy_boss.png',
+      CHEST: '/treasure_chest.png'
     };
-    return pathMap[heroClass] || '/ranger.png';
+    return pathMap[type] || '/ranger.png';
   };
 
-  // Preload actual hero images on mount
+  // Preload actual images on mount
   useEffect(() => {
-    const classes = ['ranger', 'warrior', 'wizard', 'rogue', 'paladin', 'druid', 'necromancer'];
+    const typesToLoad = [
+      'ranger', 'warrior', 'wizard', 'rogue', 'paladin', 'druid', 'necromancer',
+      'enemy', 'archer', 'elite', 'boss', 'chest'
+    ];
     let loadedCount = 0;
-    classes.forEach(cls => {
+    typesToLoad.forEach(cls => {
       const img = new Image();
       img.src = getAvatarPath(cls.toUpperCase());
-      img.onload = () => {
+      const handleLoad = () => {
         loadedCount++;
-        if (loadedCount === classes.length) {
+        if (loadedCount === typesToLoad.length) {
           setImagesLoaded(true);
         }
       };
+      img.onload = handleLoad;
+      img.onerror = handleLoad;
       imagesRef.current[cls] = img;
     });
   }, []);
@@ -407,6 +446,24 @@ export const CombatSimulation: React.FC = () => {
       const weapon = hero.equipment['weapon'];
       const weaponDmg = weapon?.stats?.damage ?? 0;
 
+      // Sum lifeSteal from all equipped items
+      let lifeSteal = 0;
+      if (hero.equipment) {
+        for (const key in hero.equipment) {
+          const item = hero.equipment[key as EquipmentSlot];
+          if (item?.stats?.lifeSteal) lifeSteal += item.stats.lifeSteal;
+        }
+      }
+      // Warrior passive: 2% life steal
+      if (hero.class === 'WARRIOR') {
+        lifeSteal += 0.02;
+      }
+      // Vampiric Blade powerup: +3% life steal per stack
+      const vampBladeCount = (activeRun.selectedPowerups ?? []).filter(p => p === 'Vampiric Blade').length;
+      if (vampBladeCount > 0) {
+        lifeSteal += 0.03 * vampBladeCount;
+      }
+
       spawnedEntities.push({
         id: heroId,
         name: hero.class,
@@ -421,6 +478,8 @@ export const CombatSimulation: React.FC = () => {
         attackRange: hero.class === 'RANGER' ? 4 : hero.class === 'WIZARD' ? 3.5 : 1.2,
         attackCooldown: 0,
         damage: classBaseDmg + weaponDmg,
+        lifeSteal,
+        tempBuffs: runStatus.tempBuffs ?? [],
         color: hero.class === 'WARRIOR' ? '#0070dd' : hero.class === 'WIZARD' ? '#a335ee' : '#1eff00',
         isDead: false,
       });
@@ -445,48 +504,16 @@ export const CombatSimulation: React.FC = () => {
         attackRange: 2.0,
         attackCooldown: 0,
         damage: Math.round(22 * Math.pow(1.40, activeRun.currentBiome)),
+        lifeSteal: 0,
+        tempBuffs: [],
         color: '#f87171',
         isDead: false,
         aggroed: false
       });
     } else if (roomType === 4) {
-      // Cage rescue room
-      spawnedEntities.push({
-        id: 'cage',
-        name: 'Rescue Cage',
-        type: 'cage',
-        gridX: targetPos.x,
-        gridY: targetPos.y,
-        posX: targetPos.x * tileSize + tileSize / 2,
-        posY: targetPos.y * tileSize + tileSize / 2,
-        hp: 50,
-        maxHp: 50,
-        speed: 0,
-        attackRange: 0,
-        attackCooldown: 9999,
-        damage: 0,
-        color: '#facc15',
-        isDead: false
-      });
+      // Loot Chest Room (second chest per biome) - chest now spawns where the Warden spawns!
     } else if (roomType === 3) {
-      // Loot Chest Room
-      spawnedEntities.push({
-        id: 'chest',
-        name: 'Scavenger Chest',
-        type: 'chest',
-        gridX: targetPos.x,
-        gridY: targetPos.y,
-        posX: targetPos.x * tileSize + tileSize / 2,
-        posY: targetPos.y * tileSize + tileSize / 2,
-        hp: 1,
-        maxHp: 1,
-        speed: 0,
-        attackRange: 0,
-        attackCooldown: 9999,
-        damage: 0,
-        color: '#facc15',
-        isDead: false
-      });
+      // Loot Chest Room - chest now spawns where the Warden spawns!
     } else {
       // Standard room has a Portal exit
       spawnedEntities.push({
@@ -503,6 +530,8 @@ export const CombatSimulation: React.FC = () => {
         attackRange: 0,
         attackCooldown: 9999,
         damage: 0,
+        lifeSteal: 0,
+        tempBuffs: [],
         color: '#a335ee',
         isDead: false
       });
@@ -565,7 +594,7 @@ export const CombatSimulation: React.FC = () => {
 
         spawnedEntities.push({
           id: `enemy-${g}-0`,
-          name: mobType === 'elite' ? 'Cage Warden' : mobType === 'archer' ? 'Bone Archer' : 'Feral Ghoul',
+          name: mobType === 'elite' ? 'Dungeon Warden' : mobType === 'archer' ? 'Bone Archer' : 'Feral Ghoul',
           type: mobType,
           gridX: gx,
           gridY: gy,
@@ -577,10 +606,34 @@ export const CombatSimulation: React.FC = () => {
           attackRange: mobType === 'archer' ? 4.5 : 1.2,
           attackCooldown: mobType === 'archer' ? 1.5 : 0,
           damage: mobDmg,
+          lifeSteal: 0,
+          tempBuffs: [],
           color: mobType === 'elite' ? '#f87171' : mobType === 'archer' ? '#fb923c' : '#e2e8f0',
           isDead: false,
           aggroed: false
         });
+
+        if (mobType === 'elite') {
+          spawnedEntities.push({
+            id: 'chest',
+            name: 'Scavenger Chest',
+            type: 'chest',
+            gridX: gx,
+            gridY: gy,
+            posX: gx * tileSize + tileSize / 2,
+            posY: gy * tileSize + tileSize / 2,
+            hp: 1,
+            maxHp: 1,
+            speed: 0,
+            attackRange: 0,
+            attackCooldown: 9999,
+            damage: 0,
+            lifeSteal: 0,
+            tempBuffs: [],
+            color: '#facc15',
+            isDead: false
+          });
+        }
 
         // Spawn melee sibling for melee packs only
         if (mobType === 'enemy' && gy + 1 < gridSize - 2 && grid[gy+1]?.[gx] === 0) {
@@ -598,6 +651,8 @@ export const CombatSimulation: React.FC = () => {
             attackRange: 1.2,
             attackCooldown: 0,
             damage: scaledDmg(biome, chamber),
+            lifeSteal: 0,
+            tempBuffs: [],
             color: '#e2e8f0',
             isDead: false,
             aggroed: false
@@ -664,7 +719,7 @@ export const CombatSimulation: React.FC = () => {
     const delta = (time - lastUpdateRef.current) / 1000;
     lastUpdateRef.current = time;
 
-    if (isPausedRef.current || run.drafting) {
+    if (isPausedRef.current || run.drafting || activeDialogueRef.current) {
       draw();
       loopRef.current = requestAnimationFrame(updateSimulation);
       return;
@@ -702,13 +757,48 @@ export const CombatSimulation: React.FC = () => {
       return;
     }
 
+    // Detect boss death — show sorceress dialogue immediately in-dungeon (only on first kill)
+    const wizardAlreadyUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
+    if (run.currentBiome === 1 && run.currentChamber === 5 && !bossDialogueShownRef.current && !wizardAlreadyUnlocked) {
+      const boss = entities.find(e => e.type === 'boss');
+      if (boss && boss.isDead) {
+        bossDialogueShownRef.current = true;
+
+        // Unlock wizard/sorceress
+        setRoster(prev => prev.map(h =>
+          h.character_id === 'hero_wizard' ? { ...h, unlocked: true } : h
+        ));
+
+        // Show sorceress dialogue right away
+        const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+        if (warriorUnlocked && questState.warriorSurvivedBoss) {
+          enqueueDialogue([
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
+            { speaker: "Warrior Chef", portrait: "/warrior_chef.png", text: "Daughter! You're safe! Oh, thank the heavens. I thought I'd lost you to these dungeons forever!" },
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Father? You... you're fighting again? I thought you retired to serve stews." },
+            { speaker: "Warrior Chef", portrait: "/warrior_chef.png", text: "A dad's job is never done, sweetie! Especially when his daughter goes dungeon-crawling for garlic bread herbs." },
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Well... since you're here, I suppose I shall pledge my spells to this guild as well. Let us burn down what remains of these dungeons together." }
+          ]);
+        } else {
+          enqueueDialogue([
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
+            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Now that you have shattered their control, I shall pledge my spells to your cause. Let us burn down what remains of these dungeons." }
+          ]);
+        }
+        setCombatLog(log => [...log, `✨ The Sorceress has joined your guild!`]);
+      }
+    }
+
     // 1. Process active objective clearing
     const activeObjective = hostiles.find(e => !e.isDead && (e.type === 'boss' || e.type === 'chest' || e.type === 'cage'));
     const activePortal = hostiles.find(e => !e.isDead && e.type === 'portal');
     const primaryObjective = hostiles.find(e => !e.isDead && (e.type === 'chest' || e.type === 'cage' || e.type === 'boss' || e.type === 'portal'));
 
     // Spawn an Exit Portal at objective coordinate once cleared
-    if (!activeObjective && !activePortal) {
+    // Block portal while boss dialogue is active so player reads it first
+    if (!activeObjective && !activePortal && !activeDialogue) {
       const deadObjective = entities.find(e => e.isDead && (e.type === 'boss' || e.type === 'chest' || e.type === 'cage'));
       const tx = deadObjective ? deadObjective.gridX : 36;
       const ty = deadObjective ? deadObjective.gridY : 20;
@@ -727,6 +817,8 @@ export const CombatSimulation: React.FC = () => {
         attackRange: 0,
         attackCooldown: 9999,
         damage: 0,
+        lifeSteal: 0,
+        tempBuffs: [],
         color: '#a335ee',
         isDead: false
       });
@@ -746,6 +838,80 @@ export const CombatSimulation: React.FC = () => {
     // Process entity AI
     for (const ent of entities) {
       if (ent.isDead) continue;
+
+      if (ent.type === 'item_loot') {
+        if (ent.lootTimer === undefined) ent.lootTimer = 0;
+        ent.lootTimer += dt;
+        
+        if (ent.lootTimer < 0.6) {
+          // Physics popout phase
+          const vx = ent.velX ?? 0;
+          const vy = ent.velY ?? 0;
+          ent.posX += vx * dt * 25;
+          ent.posY += vy * dt * 25;
+          ent.velX = vx * Math.max(0, 1 - 5 * dt);
+          ent.velY = (vy + 20 * dt) * Math.max(0, 1 - 2 * dt); // gravity + drag
+          // Keep grid updated
+          ent.gridX = Math.floor(ent.posX / tileSize);
+          ent.gridY = Math.floor(ent.posY / tileSize);
+        } else {
+          // Magnetized suction phase
+          let closestHero: SimulatedEntity | null = null;
+          let minD = 99999;
+          for (const h of heroes) {
+            const dx = h.posX - ent.posX;
+            const dy = h.posY - ent.posY;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < minD) {
+              minD = d;
+              closestHero = h;
+            }
+          }
+          if (closestHero) {
+            const dx = closestHero.posX - ent.posX;
+            const dy = closestHero.posY - ent.posY;
+            const speed = 100 + 400 * (ent.lootTimer - 0.6); // accelerate suction
+            ent.posX += (dx / minD) * speed * dt;
+            ent.posY += (dy / minD) * speed * dt;
+            ent.gridX = Math.floor(ent.posX / tileSize);
+            ent.gridY = Math.floor(ent.posY / tileSize);
+            
+            if (minD < 12) {
+              // Collected!
+              ent.isDead = true;
+              if (ent.lootItem) {
+                addRunLootToBag(ent.lootItem);
+                setCombatLog(log => [...log, `🎁 Loot Collected: Found [${ent.lootItem?.name}] (${ent.lootItem?.rarity})!`].slice(-40));
+                
+                floatingTextsRef.current.push({
+                  text: `+1 Loot: ${ent.lootItem.name}`,
+                  x: closestHero!.posX,
+                  y: closestHero!.posY - 12,
+                  color: ent.color,
+                  life: 1.5
+                });
+                
+                // Spawn particles
+                for (let i = 0; i < 8; i++) {
+                  const angle = Math.random() * Math.PI * 2;
+                  const pSpeed = 20 + Math.random() * 40;
+                  particlesRef.current.push({
+                    x: closestHero!.posX,
+                    y: closestHero!.posY,
+                    vx: Math.cos(angle) * pSpeed,
+                    vy: Math.sin(angle) * pSpeed,
+                    color: ent.color,
+                    size: 2 + Math.random() * 2,
+                    life: 0.5 + Math.random() * 0.5
+                  });
+                }
+              }
+            }
+          }
+        }
+        continue;
+      }
+
       if (ent.type === 'chest' || ent.type === 'cage' || ent.type === 'portal') continue;
 
       // After the early continue above, ent is never chest/cage/portal here
@@ -839,10 +1005,29 @@ export const CombatSimulation: React.FC = () => {
           ? Math.sqrt((ent.posX - anchor.posX) ** 2 + (ent.posY - anchor.posY) ** 2) / tileSize 
           : 0;
 
+        // Grouping mode: walk back towards party when too far from anchor
+        // Uses distance-based hysteresis: activate at 4.5 tiles, deactivate at 2.0 tiles
+        // Minimum 1 second commitment prevents oscillation when both members are borderline
+        if (anchor) {
+          if (ent.groupingModeTimer !== undefined && ent.groupingModeTimer > 0) {
+            ent.groupingModeTimer = Math.max(0, ent.groupingModeTimer - dt);
+            ent.groupingMode = true;
+          } else if (distToAnchorTiles > 4.5) {
+            ent.groupingMode = true;
+            ent.groupingModeTimer = 1.0;
+          } else if (distToAnchorTiles < 2.0) {
+            ent.groupingMode = false;
+          }
+          // Between 2.0 and 4.5 tiles with no active timer: maintain current state (hysteresis)
+        } else {
+          ent.groupingMode = false;
+          ent.groupingModeTimer = 0;
+        }
+
         // Hero targeting priority:
         // A) Lowest HP aggroed enemy (finish off weak targets), nearest as tiebreaker
         // B) If no aggroed enemy, pathfind and walk towards the main objective on the right!
-        //    (However, if too far ahead of anchor, target the anchor to wait/pull back)
+        //    (However, if groupingMode is active, target the anchor to wait/pull back)
         const activeEnemies = hostiles.filter(e => e.aggroed && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal');
         
         if (activeEnemies.length > 0) {
@@ -864,8 +1049,8 @@ export const CombatSimulation: React.FC = () => {
           target = bestTarget;
         } else {
           // No active threat: target the main exit portal/chest/cage directly!
-          // If we are too far ahead of our anchor, target the anchor instead to group up
-          if (anchor && distToAnchorTiles > 4.5 && ent.posX > anchor.posX) {
+          // If we are in groupingMode, target the anchor instead to group up
+          if (ent.groupingMode && anchor) {
             target = anchor;
           } else {
             target = primaryObjective || null;
@@ -882,6 +1067,12 @@ export const CombatSimulation: React.FC = () => {
         // 3. Attack / Interaction Check
         const effectiveRange = target.type === 'portal' ? 0.1 : (target.type === 'chest' || target.type === 'cage') ? 0.9 : ent.attackRange;
         
+        // Prevent friendly fire: heroes must never attack other heroes
+        if (!isHostile && heroTypes.has(target.type)) {
+          target = null;
+          continue;
+        }
+
         if (tileDist <= effectiveRange) {
           if (ent.attackCooldown <= 0) {
             // Base attack cooldown per class
@@ -921,6 +1112,41 @@ export const CombatSimulation: React.FC = () => {
             if (target.type === 'chest' || target.type === 'cage') {
               target.hp = 0;
               target.isDead = true;
+              
+              if (target.type === 'chest') {
+                const item = generateRandomItem(run.currentBiome);
+                entitiesRef.current.push({
+                  id: `loot-${Date.now()}-${Math.random()}`,
+                  name: item.name,
+                  type: 'item_loot',
+                  gridX: target.gridX,
+                  gridY: target.gridY,
+                  posX: target.posX,
+                  posY: target.posY,
+                  hp: 1,
+                  maxHp: 1,
+                  speed: 2,
+                  attackRange: 0,
+                  attackCooldown: 0,
+                  damage: 0,
+                  lifeSteal: 0,
+                  tempBuffs: [],
+                  color: item.rarity === 'Legendary' ? '#ff8000' : item.rarity === 'Epic' ? '#a335ee' : item.rarity === 'Rare' ? '#0070dd' : '#1eff00',
+                  isDead: false,
+                  lootItem: item,
+                  velX: (Math.random() - 0.5) * 10,
+                  velY: -5 - Math.random() * 8,
+                });
+
+                floatingTextsRef.current.push({
+                  text: `Scavenging...`,
+                  x: target.posX,
+                  y: target.posY - 15,
+                  color: '#facc15',
+                  life: 1.0
+                });
+              }
+
               continue;
             }
             if (target.type === 'portal') {
@@ -940,6 +1166,8 @@ export const CombatSimulation: React.FC = () => {
             if (ent.type === 'wizard') dmgMult += 0.25 * countOf('Fireball Strike');
             // Shield Slam: Warrior +15% per stack
             if (ent.type === 'warrior') dmgMult += 0.15 * countOf('Shield Slam');
+            // Elixir of Wrath: +10% damage from purchased buff
+            if (ent.tempBuffs?.includes('damage')) dmgMult += 0.10;
 
             const isMitigated = target.type === 'warrior' && Math.random() < 0.25;
             const rawDmg = Math.round(ent.damage * dmgMult);
@@ -976,9 +1204,59 @@ export const CombatSimulation: React.FC = () => {
               });
             }
 
+            // --- Lifesteal: heal attacker based on lifeSteal % of damage dealt ---
+            if (!isHostile && ent.lifeSteal > 0) {
+              const healAmount = Math.round(dmg * ent.lifeSteal);
+              if (healAmount > 0) {
+                const oldHp = ent.hp;
+                ent.hp = Math.min(ent.hp + healAmount, ent.maxHp);
+                const actualHeal = ent.hp - oldHp;
+                if (actualHeal > 0) {
+                  // Sync to livingSquad
+                  if (run.livingSquad[ent.id]) {
+                    run.livingSquad[ent.id].hp = ent.hp;
+                  }
+                  floatingTextsRef.current.push({
+                    text: `+${actualHeal}`,
+                    x: ent.posX,
+                    y: ent.posY - 10,
+                    color: '#4ade80',
+                    life: 1.0
+                  });
+                }
+              }
+            }
+
             if (target.hp <= 0) {
               target.isDead = true;
               setCombatLog(log => [...log, `💀 ${target!.name} has fallen.`].slice(-40));
+              
+              if (target.type === 'boss') {
+                const item = generateRandomItem(run.currentBiome);
+                item.rarity = 'Legendary';
+                entitiesRef.current.push({
+                  id: `loot-${Date.now()}-${Math.random()}`,
+                  name: item.name,
+                  type: 'item_loot',
+                  gridX: target.gridX,
+                  gridY: target.gridY,
+                  posX: target.posX,
+                  posY: target.posY,
+                  hp: 1,
+                  maxHp: 1,
+                  speed: 2,
+                  attackRange: 0,
+                  attackCooldown: 0,
+                  damage: 0,
+                  lifeSteal: 0,
+                  tempBuffs: [],
+                  color: '#ff8000', // Legendary
+                  isDead: false,
+                  lootItem: item,
+                  velX: (Math.random() - 0.5) * 10,
+                  velY: -5 - Math.random() * 8,
+                });
+              }
               
               if (run.livingSquad[target.id]) {
                 run.livingSquad[target.id].hp = 0;
@@ -1089,10 +1367,7 @@ export const CombatSimulation: React.FC = () => {
                 anchor = teammates.reduce((furthest, curr) => curr.posX < furthest.posX ? curr : furthest, teammates[0]);
               }
             }
-            const distToAnchorTiles = anchor 
-              ? Math.sqrt((ent.posX - anchor.posX) ** 2 + (ent.posY - anchor.posY) ** 2) / tileSize 
-              : 0;
-            const isTooFar = anchor && distToAnchorTiles > 4.5;
+            const isTooFar = ent.groupingMode;
 
             // Current cell distance to closest threat
             let currentMinThreatDist = 999;
@@ -1181,11 +1456,9 @@ export const CombatSimulation: React.FC = () => {
               anchor = teammates.reduce((furthest, curr) => curr.posX < furthest.posX ? curr : furthest, teammates[0]);
             }
           }
-          const distToAnchorTiles = anchor 
-            ? Math.sqrt((ent.posX - anchor.posX) ** 2 + (ent.posY - anchor.posY) ** 2) / tileSize 
-            : 0;
 
-          if (anchor && distToAnchorTiles > 4.5 && ent.posX > anchor.posX && target.type !== 'portal' && target.type !== 'chest' && target.type !== 'cage') {
+
+          if (ent.groupingMode && anchor && target.type !== 'portal' && target.type !== 'chest' && target.type !== 'cage') {
             if (tileDist > ent.attackRange) {
               moveTarget = anchor;
             }
@@ -1340,12 +1613,8 @@ export const CombatSimulation: React.FC = () => {
       if (drawX < -20 || drawX > viewWidth + 20 || drawY < -20 || drawY > viewHeight + 20) return;
 
       const radius = ent.type === 'boss' ? 24 : ent.type === 'chest' || ent.type === 'cage' ? 16 : 11;
-
-      // Draw Hero preloaded portraits
-      const isHero = ent.type !== 'enemy' && ent.type !== 'elite' && ent.type !== 'boss' && ent.type !== 'chest' && ent.type !== 'cage' && ent.type !== 'portal';
       const img = imagesRef.current[ent.type];
-
-      if (isHero && img && img.complete) {
+      if (img && img.complete) {
         // Draw cropped avatar circle
         ctx.save();
         ctx.beginPath();
@@ -1354,12 +1623,35 @@ export const CombatSimulation: React.FC = () => {
         ctx.drawImage(img, drawX - radius, drawY - radius, radius * 2, radius * 2);
         ctx.restore();
 
-        // Draw class color outline
+        // Draw color outline
         ctx.beginPath();
         ctx.arc(drawX, drawY, radius, 0, 2 * Math.PI);
-        ctx.lineWidth = 2.0;
+        ctx.lineWidth = ent.type === 'boss' ? 3.0 : ent.type === 'elite' ? 2.5 : 1.8;
         ctx.strokeStyle = ent.color;
         ctx.stroke();
+      } else if (ent.type === 'item_loot') {
+        // Draw a shiny diamond or star for the loot
+        ctx.beginPath();
+        ctx.moveTo(drawX, drawY - 6);
+        ctx.lineTo(drawX + 6, drawY);
+        ctx.lineTo(drawX, drawY + 6);
+        ctx.lineTo(drawX - 6, drawY);
+        ctx.closePath();
+        ctx.fillStyle = ent.color;
+        ctx.fill();
+        
+        // Draw a glowing outer ring/aura
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = ent.color + '44';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw a small text above the item with the name
+        ctx.font = 'bold 7px sans-serif';
+        ctx.fillStyle = ent.color;
+        ctx.textAlign = 'center';
+        ctx.fillText(ent.name || 'Loot', drawX, drawY - 9);
       } else if (isArcherUnit) {
         // Draw archers as diamond shapes to distinguish them
         ctx.beginPath();
@@ -1455,6 +1747,16 @@ export const CombatSimulation: React.FC = () => {
   }, [runStarted, activeRun?.currentBiome, activeRun?.currentChamber]);
 
   const handleStartSimulation = () => {
+    if (activeRun) {
+      entitiesRef.current.forEach(ent => {
+        const runStatus = activeRun.livingSquad[ent.id];
+        if (runStatus) {
+          ent.hp = runStatus.hp;
+          ent.maxHp = runStatus.maxHp;
+          ent.tempBuffs = runStatus.tempBuffs ?? [];
+        }
+      });
+    }
     setRunStarted(true);
     setCombatLog(log => [...log, `Squad coordinates locked. Commencing exploration.`]);
   };
@@ -1569,9 +1871,16 @@ export const CombatSimulation: React.FC = () => {
               </div>
 
               {/* Animating campfire element */}
-              <div className="campfire-fire-pit">
+              <div
+                className={`campfire-fire-pit ${healedHeroes.length > 0 ? 'fire-used' : ''}`}
+                onClick={handleHealAll}
+                style={{ cursor: healedHeroes.length > 0 ? 'default' : 'pointer' }}
+              >
                 <div className="fire-pit-glow" />
                 <img src="/campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
+                {healedHeroes.length > 0 && (
+                  <div className="campfire-rested-label">Rested</div>
+                )}
               </div>
 
               {/* Deploy + Exit buttons underneath fire pit */}
@@ -1633,25 +1942,6 @@ export const CombatSimulation: React.FC = () => {
                         );
                       })}
                     </div>
-                  </div>
-
-                  <div className="camp-campfire-actions">
-                    {activeRun.livingSquad[selectedHero.character_id]?.hp > 0 ? (
-                      <div className="camp-rest-action-card">
-                        <p className="camp-rest-desc">Resting by the fire restores +30 HP to this hero.</p>
-                        <button
-                          disabled={healedHeroes.includes(selectedHero.character_id)}
-                          className="camp-action-button"
-                          onClick={() => handleHeal(selectedHero.character_id)}
-                        >
-                          {healedHeroes.includes(selectedHero.character_id) ? 'Rested & Recovered' : 'Rest at Campfire (Free)'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="camp-rest-action-card deceased">
-                        <p className="camp-rest-desc" style={{ color: '#f87171' }}>This ally is deceased. Use a resurrection scroll to revive them.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1727,7 +2017,7 @@ export const CombatSimulation: React.FC = () => {
               
               <button 
                 className="dungeon-control-btn"
-                onClick={() => setSpeedMultiplier(prev => prev === 1 ? 2 : prev === 2 ? 3 : 1)}
+                onClick={() => setSpeedMultiplier(prev => prev === 1 ? 2 : prev === 2 ? 3 : prev === 3 ? 5 : prev === 5 ? 10 : 1)}
               >
                 <FastForward size={10} />
                 SPEED: {speedMultiplier}x
@@ -1759,7 +2049,7 @@ export const CombatSimulation: React.FC = () => {
                   </span>
                   {Object.entries(stacked).map(([powerup, count], idx) => {
                     const isDefense = powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron');
-                    const isAttack = powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam');
+                    const isAttack = powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade');
                     const isMagic = powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike');
                     const isHeal = powerup.includes('Rejuvenate');
 
@@ -1861,7 +2151,7 @@ export const CombatSimulation: React.FC = () => {
                 <AlertCircle size={14} /> Combat Feed
               </h4>
 
-              <div className="dungeon-combat-log-container">
+              <div className="dungeon-combat-log-container" ref={combatLogRef}>
                 {combatLog.map((log, index) => (
                   <div key={index} className="dungeon-combat-log-row">
                     {log}
@@ -1904,29 +2194,26 @@ export const CombatSimulation: React.FC = () => {
         </div>
       )}
 
-      {/* Revive Confirm Overlay */}
+      {/* Revive Confirm Modal */}
       {showReviveModal && selectedHero && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="glass-panel max-w-sm w-full p-6 border-red-500 flex flex-col gap-4 text-center">
-            <Heart size={36} className="text-red-500 animate-bounce mx-auto" />
-            <h3 className="text-xl font-fantasy text-red-500 m-0">Revive Fallen Ally</h3>
-            <p className="text-xs text-gray-400">
-              Reviving **{selectedHero.class}** will consume **1 Resurrection Scroll**. Do you wish to proceed?
+        <div className="menu-modal-overlay">
+          <div className="menu-modal-card">
+            <Heart size={36} className="text-green-500 mb-2 animate-bounce" />
+            <h4 className="menu-modal-title">Revive Fallen Ally?</h4>
+            <p className="menu-modal-desc">
+              Reviving <strong>{selectedHero.class}</strong> will consume <strong>1 Resurrection Scroll</strong>.<br />
+              Do you wish to proceed?
             </p>
-            <div className="text-[10px] text-gray-500">
+            <p className="menu-modal-desc" style={{ marginTop: '-12px' }}>
               Scrolls remaining: {activeRun.scrollOfResurrectionCount}
-            </div>
-
-            <div className="flex gap-4 mt-2 justify-center">
-              <button
-                className="px-4 py-2 bg-gray-800 text-white rounded text-xs font-fantasy"
-                onClick={() => setShowReviveModal(false)}
-              >
+            </p>
+            <div className="menu-modal-actions">
+              <button className="modal-cancel-btn" onClick={() => setShowReviveModal(false)}>
                 Cancel
               </button>
               <button
+                className="modal-confirm-health-btn"
                 disabled={activeRun.scrollOfResurrectionCount <= 0}
-                className="px-4 py-2 bg-red-600 text-white rounded text-xs font-fantasy font-bold disabled:opacity-40"
                 onClick={() => handleRevive(selectedHero.character_id)}
               >
                 Revive

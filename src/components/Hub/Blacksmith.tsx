@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Footprints
 } from 'lucide-react';
+import { ItemTooltip } from './ItemTooltip';
 
 export const Blacksmith: React.FC = () => {
   const {
@@ -26,6 +27,20 @@ export const Blacksmith: React.FC = () => {
   const [selectedItemSource, setSelectedItemSource] = useState<'bag' | 'hero'>('bag');
   const [selectedHeroId, setSelectedHeroId] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+    setMouseCoords(null);
+  };
   const [rerollPrompt, setRerollPrompt] = useState<{
     itemId: string;
     affixIndex: number;
@@ -214,9 +229,13 @@ export const Blacksmith: React.FC = () => {
                   <div
                     key={item.id}
                     onClick={() => setSelectedItemId(item.id)}
+                    onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
                     className={`forge-item-row border-rarity-${item.rarity.toLowerCase()} ${
                       selectedItemId === item.id ? 'active' : ''
                     }`}
+                    style={{ position: 'relative' }}
                   >
                     <div className="forge-item-sprite-box">
                       {getItemIcon(item)}
@@ -343,6 +362,7 @@ export const Blacksmith: React.FC = () => {
           )}
         </div>
       </div>
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };
