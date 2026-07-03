@@ -1,0 +1,115 @@
+import React from 'react';
+import { useGame } from '../../context/GameContext';
+import { Coins, Award, Sparkles, Home, ShieldAlert, CheckCircle2 } from 'lucide-react';
+
+export const RunSummaryModal: React.FC = () => {
+  const { completedRunSummary, closeRunSummary } = useGame();
+
+  if (!completedRunSummary) return null;
+
+  const { success, goldScavenged, itemsAcquired, powerupsSelected, currentBiome, currentChamber } = completedRunSummary;
+
+  const handleReturn = () => {
+    closeRunSummary();
+  };
+
+  return (
+    <div className="summary-overlay">
+      <div className="summary-board">
+        {/* Victory/Defeat Banner Header */}
+        <div className={`summary-header ${success ? 'victory' : 'defeat'}`}>
+          <div className="summary-banner-icon">
+            {success ? (
+              <CheckCircle2 size={36} className="text-amber-400 animate-bounce" />
+            ) : (
+              <ShieldAlert size={36} className="text-red-500 animate-pulse" />
+            )}
+          </div>
+          <h2 className="summary-banner-title">
+            {success ? 'Expedition Successful' : 'Expedition Failed'}
+          </h2>
+          <p className="summary-banner-subtitle">
+            Terminated in Biome {currentBiome}: Chamber {currentChamber}
+          </p>
+        </div>
+
+        {/* Stats Columns Split */}
+        <div className="summary-content-grid">
+          {/* Left section: Gold Scavenged */}
+          <div className="summary-card gold-card">
+            <h4 className="summary-card-title">
+              <Coins size={14} className="text-amber-500" /> Gold Scavenged
+            </h4>
+            <div className="summary-gold-amount">
+              <span className="summary-gold-value">{goldScavenged}</span>
+              <span className="summary-gold-lbl">g</span>
+            </div>
+            <p className="summary-gold-desc">Added directly to your treasury barracks.</p>
+          </div>
+
+          {/* Center section: Selected Powerups Breakdown */}
+          <div className="summary-card powerups-card">
+            <h4 className="summary-card-title">
+              <Sparkles size={14} className="text-purple-400" /> Powerups Drafted
+            </h4>
+            <div className="summary-powerups-list">
+              {powerupsSelected.length === 0 ? (
+                <div className="summary-empty-text">No abilities drafted this run.</div>
+              ) : (
+                powerupsSelected.map((title, idx) => (
+                  <div key={idx} className="summary-powerup-row">
+                    <span className="summary-powerup-bullet">✦</span>
+                    <span className="summary-powerup-name">{title}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom section: Loot Items Acquired */}
+        <div className="summary-loot-container">
+          <h4 className="summary-card-title" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px', margin: '0 0 10px 0' }}>
+            <Award size={14} className="text-green-400" /> Scavenged Loot Acquired
+          </h4>
+          <div className="summary-loot-list">
+            {itemsAcquired.length === 0 ? (
+              <div className="loot-empty-text" style={{ padding: '20px 0' }}>No equipment scavenged on this expedition.</div>
+            ) : (
+              itemsAcquired.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`summary-loot-card border-rarity-${item.rarity.toLowerCase()}`}
+                >
+                  <div className="summary-loot-header">
+                    <span className={`summary-loot-name ${
+                      item.rarity === 'Legendary' ? 'text-legendary'
+                        : item.rarity === 'Epic' ? 'text-epic'
+                        : item.rarity === 'Rare' ? 'text-rare'
+                        : item.rarity === 'Uncommon' ? 'text-uncommon'
+                        : 'text-white'
+                    }`}>{item.name}</span>
+                    <span className="summary-loot-slot">{item.type}</span>
+                  </div>
+                  <div className="summary-loot-stats">
+                    {item.stats.hp && <span>+{item.stats.hp} HP </span>}
+                    {item.stats.damage && <span>+{item.stats.damage} Atk </span>}
+                    {item.stats.armor && <span>+{item.stats.armor} Arm </span>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Return Button */}
+        <div className="summary-footer-actions">
+          <button className="deploy-btn-pronounced summary-return-btn" onClick={handleReturn}>
+            <Home size={14} className="inline mr-1" /> Return To Town
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+export default RunSummaryModal;
