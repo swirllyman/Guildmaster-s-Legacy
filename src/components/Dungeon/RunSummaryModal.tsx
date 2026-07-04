@@ -1,17 +1,23 @@
 import React from 'react';
 import { useGame } from '../../context/GameContext';
-import { Coins, Award, Sparkles, Home, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Coins, Award, Sparkles, Home, ShieldAlert, CheckCircle2, Sword } from 'lucide-react';
 
 export const RunSummaryModal: React.FC = () => {
-  const { completedRunSummary, closeRunSummary } = useGame();
+  const { completedRunSummary, closeRunSummary, roster } = useGame();
 
   if (!completedRunSummary) return null;
 
-  const { success, goldScavenged, itemsAcquired, powerupsSelected, currentBiome, currentChamber } = completedRunSummary;
+  const { success, goldScavenged, itemsAcquired, powerupsSelected, currentBiome, currentChamber, heroDamageDealt } = completedRunSummary;
 
   const handleReturn = () => {
     closeRunSummary();
   };
+
+  const formatClassName = (cls: string) => {
+    return cls.charAt(0) + cls.slice(1).toLowerCase();
+  };
+
+  const damageDealt = heroDamageDealt || {};
 
   return (
     <div className="summary-overlay">
@@ -62,6 +68,34 @@ export const RunSummaryModal: React.FC = () => {
                     <span className="summary-powerup-name">{title}</span>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+
+          {/* Right section: Hero Damage breakdown */}
+          <div className="summary-card damage-card">
+            <h4 className="summary-card-title">
+              <Sword size={14} className="text-red-400" /> Damage Dealt
+            </h4>
+            <div className="summary-damage-list">
+              {Object.keys(damageDealt).length === 0 ? (
+                <div className="summary-empty-text">No damage dealt this run.</div>
+              ) : (
+                Object.entries(damageDealt).map(([heroId, dmg]) => {
+                  const hero = roster.find(h => h.character_id === heroId);
+                  const className = hero ? formatClassName(hero.class) : 'Hero';
+                  return (
+                    <div key={heroId} className="summary-damage-row">
+                      <div className="summary-damage-hero-info">
+                        <span className="summary-damage-bullet">✦</span>
+                        <span className="summary-damage-hero">{className}</span>
+                      </div>
+                      <span className="summary-damage-value">
+                        {dmg.toLocaleString()}<span className="summary-damage-lbl"> dmg</span>
+                      </span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

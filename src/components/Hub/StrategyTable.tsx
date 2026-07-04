@@ -65,7 +65,8 @@ export const StrategyTable: React.FC = () => {
   };
 
   const selectedHero = roster.find(h => h.character_id === selectedHeroId) || null;
-  const maxSquadSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+  const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+  const maxSquadSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
 
   // Calculate stats including equipment
   const getCombinedStats = (hero: Hero) => {
@@ -77,6 +78,7 @@ export const StrategyTable: React.FC = () => {
     let speed = 1.0;
     let atkSpeed = 1.0;
     let magic = 0;
+    let atkCdReduction = 0;
 
     // Equip modifications
     for (const key in hero.equipment) {
@@ -87,6 +89,8 @@ export const StrategyTable: React.FC = () => {
         if (item.stats.armor) armor += item.stats.armor;
         if (item.stats.magic) magic += item.stats.magic;
         if (item.stats.atkSpeed) atkSpeed *= item.stats.atkSpeed;
+        if (item.stats.speed) speed *= (1 + item.stats.speed / 100);
+        if (item.stats.atkCooldownReduction) atkCdReduction += item.stats.atkCooldownReduction;
       }
     }
 
@@ -113,7 +117,8 @@ export const StrategyTable: React.FC = () => {
       armor,
       speed: parseFloat((speed * hero.base_stats.speed_mult).toFixed(2)),
       atkSpeed: parseFloat((atkSpeed * hero.base_stats.atk_speed_mult).toFixed(2)),
-      magic
+      magic,
+      atkCdReduction: Math.min(parseFloat((atkCdReduction * 100).toFixed(1)), 40)
     };
   };
 
@@ -370,6 +375,8 @@ export const StrategyTable: React.FC = () => {
                             {item.stats.damage && <div>+{item.stats.damage} Damage</div>}
                             {item.stats.armor && <div>+{item.stats.armor} Armor</div>}
                             {item.stats.atkSpeed && <div>+{Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
+                            {item.stats.speed && <div>+{item.stats.speed}% Move Speed</div>}
+                            {item.stats.atkCooldownReduction && <div>+{Math.round(item.stats.atkCooldownReduction * 100)}% Attack CDR</div>}
                           </div>
                         </div>
                       ) : (
@@ -427,6 +434,12 @@ export const StrategyTable: React.FC = () => {
                         <span className="stat-base-label">(Base: {selectedHero.base_stats.atk_speed_mult.toFixed(2)}x)</span>
                       </span>
                     </div>
+                    {stats.atkCdReduction > 0 && (
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-gray-500">Attack CDR:</span>
+                        <span className="text-white font-bold">+{stats.atkCdReduction}%</span>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -522,6 +535,8 @@ export const StrategyTable: React.FC = () => {
               {selectedBagItem.stats.damage && <div>+{selectedBagItem.stats.damage} Damage</div>}
               {selectedBagItem.stats.armor && <div>+{selectedBagItem.stats.armor} Armor Rating</div>}
               {selectedBagItem.stats.atkSpeed && <div>+{Math.round((selectedBagItem.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
+              {selectedBagItem.stats.speed && <div>+{selectedBagItem.stats.speed}% Move Speed</div>}
+              {selectedBagItem.stats.atkCooldownReduction && <div>+{Math.round(selectedBagItem.stats.atkCooldownReduction * 100)}% Attack CDR</div>}
             </div>
 
             {selectedBagItem.affixes.length > 0 && (

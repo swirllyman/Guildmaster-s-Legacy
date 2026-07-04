@@ -24,6 +24,8 @@ const buildTooltipLines = (item: Item): { text: string; color: string }[] => {
   if (item.stats.armor)     lines.push({ text: `+${item.stats.armor} Armor`,              color: '#60a5fa' });
   if (item.stats.damage)    lines.push({ text: `+${item.stats.damage} Flat Damage`,       color: '#fbbf24' });
   if (item.stats.atkSpeed)  lines.push({ text: `+${Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Rate`, color: '#fbbf24' });
+  if (item.stats.speed)  lines.push({ text: `+${item.stats.speed}% Movement Speed`, color: '#4ade80' });
+  if (item.stats.atkCooldownReduction)  lines.push({ text: `+${Math.round(item.stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`, color: '#fbbf24' });
   if (item.stats.critChance) lines.push({ text: `+${item.stats.critChance}% Critical Strike Chance`, color: '#c084fc' });
   if (item.stats.lifeSteal)  lines.push({ text: `+${Math.round(item.stats.lifeSteal * 100)}% Life Steal on Hit`, color: '#c084fc' });
   if (item.stats.chainChance) lines.push({ text: `${Math.round(item.stats.chainChance * 100)}% Chain Lightning Chance`, color: '#c084fc' });
@@ -44,6 +46,7 @@ export const Shop: React.FC = () => {
     shopInventory,
     gold,
     runsCount,
+    restockCount,
     roster,
     buyShopItem,
     restockShop,
@@ -99,6 +102,8 @@ export const Shop: React.FC = () => {
 
   const lockedHeroes = roster.filter(h => !h.unlocked);
   const mercUnlocked = runsCount >= 20;
+  const restockCost = 100 + 100 * restockCount;
+  const canRestock = gold >= restockCost;
 
   return (
     <div className="shop-vertical-layout">
@@ -111,8 +116,8 @@ export const Shop: React.FC = () => {
             <div className="shop-subtitle-text">Restocks after every dungeon crawl</div>
           </div>
         </div>
-        <button className="shop-restock-btn" onClick={restockShop}>
-          Restock
+        <button className="shop-restock-btn" onClick={() => restockShop()} disabled={!canRestock}>
+          Restock ({restockCost}g)
         </button>
       </div>
 

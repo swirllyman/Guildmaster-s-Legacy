@@ -57,11 +57,11 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
   const scalar = level * 1.2;
 
   if (type === 'weapon') {
-    stats.damage = Math.round((10 + Math.random() * 8) * scalar);
+    stats.damage = Math.round((4 + Math.random() * 1.5) * scalar);
     stats.atkSpeed = parseFloat((0.9 + Math.random() * 0.4).toFixed(2));
   } else {
     stats.armor = Math.round((2 + Math.random() * 4) * scalar * (weight === 'heavy' ? 1.5 : 0.8));
-    stats.hp = Math.round((15 + Math.random() * 20) * scalar * (weight === 'heavy' ? 1.3 : 0.9));
+    stats.hp = Math.round((15 + Math.random() * 5) * scalar * (weight === 'heavy' ? 1.3 : 0.9));
   }
 
   // Suffix/Rarity Stats
@@ -71,8 +71,16 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
     affixes.push(`+${stats.critChance}% Critical Strike Chance`);
   }
   if (rarity === 'Rare' || rarity === 'Epic' || rarity === 'Legendary') {
-    stats.lifeSteal = parseFloat((0.03 + Math.random() * 0.05).toFixed(3));
+    stats.lifeSteal = parseFloat((0.01 + Math.random() * 0.01).toFixed(3));
     affixes.push(`+${Math.round(stats.lifeSteal * 100)}% Life Steal on Hit`);
+    stats.speed = Math.round(5 + Math.random() * 10);
+    affixes.push(`+${stats.speed}% Movement Speed`);
+  }
+  if (rarity === 'Epic' || rarity === 'Legendary') {
+    stats.atkCooldownReduction = parseFloat((0.05 + Math.random() * 0.07).toFixed(3));
+    affixes.push(`+${Math.round(stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`);
+    stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
+    affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
   }
   if (rarity === 'Epic' || rarity === 'Legendary') {
     stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
@@ -100,6 +108,7 @@ interface GameContextProps {
   sharedBag: SharedBag;
   gold: number;
   runsCount: number;
+  restockCount: number;
   squad: string[]; // hero IDs
   temperaments: Record<string, TemperamentType>;
   shopInventory: Item[];
@@ -120,7 +129,7 @@ interface GameContextProps {
   
   // Shop Actions
   buyShopItem: (index: number) => void;
-  restockShop: () => void;
+  restockShop: (free?: boolean) => void;
   buyConsumableBuff: (buffType: 'hp' | 'damage' | 'speed') => void;
   buyScrollOfResurrection: () => void;
   
@@ -146,6 +155,12 @@ interface GameContextProps {
   
   // NPC quest triggers
   talkToTownChef: () => void;
+
+  // Tutorial
+  townTutorialStep: number;
+  advanceTownTutorial: (toStep: number) => void;
+  skipTownTutorial: () => void;
+  resetTownTutorial: () => void;
   
   // Bench / Barracks management
   buyLateGameMercenary: (heroClass: HeroClass) => void;
@@ -177,7 +192,7 @@ const INITIAL_ROSTER: Hero[] = [
     character_id: 'hero_warrior',
     class: 'WARRIOR',
     unlocked: false,
-    base_stats: { hp: 200, armor_mult: 1.25, speed_mult: 1.02, atk_speed_mult: 0.85 },
+    base_stats: { hp: 300, armor_mult: 1.25, speed_mult: 1.02, atk_speed_mult: 0.85 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
@@ -259,7 +274,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: 'Old Recurve Bow',
       type: 'weapon',
       rarity: 'Common',
-      stats: { damage: 8, atkSpeed: 1.1 },
+      stats: { damage: 16, atkSpeed: 1.1 },
       weight: 'none',
       affixes: []
     };
@@ -280,10 +295,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [gold, setGold] = useState<number>(350);
   const [runsCount, setRunsCount] = useState<number>(0);
+  const [restockCount, setRestockCount] = useState<number>(0);
   const [squad, setSquad] = useState<string[]>(['hero_ranger']);
   const [temperaments, setTemperaments] = useState<Record<string, TemperamentType>>({ hero_ranger: 'EXPLORATORY' });
   const [shopInventory, setShopInventory] = useState<Item[]>([]);
-  const [questState, setQuestState] = useState<NPCQuestState>({ chefQuestStep: 0 });
+  const [questState, setQuestState] = useState<NPCQuestState>({ chefQuestStep: 0, townTutorialStep: 0 });
   const [activeRun, setActiveRun] = useState<DungeonRun | null>(null);
   const [completedRunSummary, setCompletedRunSummary] = useState<CompletedRunSummary | null>(null);
   const [activeDialogue, setActiveDialogue] = useState<DialogueLine[] | null>(null);
@@ -302,6 +318,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(`${slotPrefix}gl_sharedBag`, JSON.stringify(sharedBag));
     localStorage.setItem(`${slotPrefix}gl_gold`, String(gold));
     localStorage.setItem(`${slotPrefix}gl_runsCount`, String(runsCount));
+    localStorage.setItem(`${slotPrefix}gl_restockCount`, String(restockCount));
     localStorage.setItem(`${slotPrefix}gl_squad`, JSON.stringify(squad));
     localStorage.setItem(`${slotPrefix}gl_temperaments`, JSON.stringify(temperaments));
     localStorage.setItem(`${slotPrefix}gl_shopInventory`, JSON.stringify(shopInventory));
@@ -311,7 +328,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       localStorage.removeItem(`${slotPrefix}gl_activeRun`);
     }
-  }, [roster, sharedBag, gold, runsCount, squad, temperaments, shopInventory, questState, activeRun, activeSlot]);
+  }, [roster, sharedBag, gold, runsCount, restockCount, squad, temperaments, shopInventory, questState, activeRun, activeSlot]);
 
   // Initial shop roll
   useEffect(() => {
@@ -331,6 +348,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 2. Runs count
     const savedRuns = localStorage.getItem(`${slotPrefix}gl_runsCount`);
     setRunsCount(savedRuns ? Number(savedRuns) : 0);
+
+    // 2b. Restock count
+    const savedRestock = localStorage.getItem(`${slotPrefix}gl_restockCount`);
+    setRestockCount(savedRestock ? Number(savedRestock) : 0);
 
     // 3. Squad
     const savedSquad = localStorage.getItem(`${slotPrefix}gl_squad`);
@@ -360,7 +381,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: 'Old Recurve Bow',
         type: 'weapon',
         rarity: 'Common',
-        stats: { damage: 8, atkSpeed: 1.1 },
+        stats: { damage: 16, atkSpeed: 1.1 },
         weight: 'none',
         affixes: []
       };
@@ -432,7 +453,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 7. Quest State
     const savedQuest = localStorage.getItem(`${slotPrefix}gl_questState`);
-    setQuestState(savedQuest ? JSON.parse(savedQuest) : { chefQuestStep: 0 });
+    const parsedQuest = savedQuest ? JSON.parse(savedQuest) : null;
+    setQuestState(parsedQuest
+      ? { chefQuestStep: parsedQuest.chefQuestStep ?? 0, warriorSurvivedBoss: parsedQuest.warriorSurvivedBoss, townTutorialStep: parsedQuest.townTutorialStep ?? 0 }
+      : { chefQuestStep: 0, townTutorialStep: 0 }
+    );
 
     // 8. Active Run
     const savedRun = localStorage.getItem(`${slotPrefix}gl_activeRun`);
@@ -450,6 +475,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(`${slotPrefix}gl_sharedBag`);
     localStorage.removeItem(`${slotPrefix}gl_gold`);
     localStorage.removeItem(`${slotPrefix}gl_runsCount`);
+    localStorage.removeItem(`${slotPrefix}gl_restockCount`);
     localStorage.removeItem(`${slotPrefix}gl_squad`);
     localStorage.removeItem(`${slotPrefix}gl_temperaments`);
     localStorage.removeItem(`${slotPrefix}gl_shopInventory`);
@@ -518,7 +544,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Roster / Squad management
   const addToSquad = (heroId: string) => {
-    const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+    const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+    const maxSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
     if (squad.length >= maxSlots) return;
     if (squad.includes(heroId)) return;
     
@@ -537,7 +564,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const assignHeroToSlot = (slotIndex: number, heroId: string | null) => {
-    const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+    const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+    const maxSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
     if (slotIndex >= maxSlots) return; // locked
 
     let newSquad = [...squad];
@@ -733,11 +761,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Roll a new affix based on slot
     const possibleAffixes = [
       `+${Math.round(4 + Math.random() * 4)}% Critical Strike Chance`,
-      `+${Math.round(3 + Math.random() * 4)}% Life Steal on Hit`,
+      `+${Math.round(1 + Math.random() * 1)}% Life Steal on Hit`,
       `+${Math.round(8 + Math.random() * 10)}% Attack Speed`,
       `+${Math.round(5 + Math.random() * 10)}% Movement Speed`,
       `+${Math.round(10 + Math.random() * 15)} Max Health`,
-      `+${Math.round(2 + Math.random() * 4)} Armor Rating`
+      `+${Math.round(2 + Math.random() * 4)} Armor Rating`,
+      `+${Math.round(5 + Math.random() * 7)}% Attack Cooldown Reduction`
     ];
     
     const newAffix = possibleAffixes[Math.floor(Math.random() * possibleAffixes.length)];
@@ -763,9 +792,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (newAffix.includes("Critical")) {
           stats.critChance = Math.round(5 + Math.random() * 4);
         } else if (newAffix.includes("Life Steal")) {
-          stats.lifeSteal = 0.05;
+          stats.lifeSteal = newAffix.includes("1%") ? 0.01 : 0.02;
         } else if (newAffix.includes("Attack Speed")) {
           stats.atkSpeed = 1.10;
+        } else if (newAffix.includes("Movement Speed")) {
+          stats.speed = Math.round(5 + Math.random() * 10);
+        } else if (newAffix.includes("Attack Cooldown Reduction")) {
+          stats.atkCooldownReduction = parseFloat((0.05 + Math.random() * 0.07).toFixed(3));
         }
         updatedItem.stats = stats;
       }
@@ -807,7 +840,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const traitMap: Record<Item['rarity'], string> = {
       Common: '',
       Uncommon: `+${Math.round(3 + Math.random() * 4)}% Critical Strike Chance`,
-      Rare: `+${Math.round(4 + Math.random() * 5)}% Life Steal on Hit`,
+      Rare: `+2% Life Steal on Hit`,
       Epic: `+12% Chain Lightning Chance on Hit`,
       Legendary: `+20 Magic Power (Signature Trait)`
     };
@@ -821,7 +854,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Update internal stats structure
     if (nextRarity === 'Uncommon') updatedItem.stats.critChance = 5;
-    if (nextRarity === 'Rare') updatedItem.stats.lifeSteal = 0.06;
+    if (nextRarity === 'Rare') updatedItem.stats.lifeSteal = 0.02;
     if (nextRarity === 'Epic') updatedItem.stats.chainChance = 0.12;
     if (nextRarity === 'Legendary') updatedItem.stats.magic = 20;
 
@@ -866,7 +899,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShopInventory(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  const restockShop = () => {
+  const restockShop = (free = false) => {
+    const cost = 100 + 100 * restockCount;
+    if (!free) {
+      if (gold < cost) return;
+      setGold(g => g - cost);
+      setRestockCount(c => c + 1);
+    }
+
     // Generate 4 items and 2 consumables
     const items: Item[] = [];
     const level = Math.max(1, Math.floor(runsCount / 2) + 1);
@@ -965,6 +1005,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     });
 
+    const heroDamageDealt: Record<string, number> = {};
+    squad.forEach(id => {
+      heroDamageDealt[id] = 0;
+    });
+
     const initialRun: DungeonRun = {
       currentBiome: 1,
       currentChamber: 1, // 1: Intro, 2: Corridors/Maze, 3: Loot Chest, 4: Loot Chest, 5: Boss
@@ -979,7 +1024,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       scrollOfResurrectionCount: nextRunScrolls,
       bossDefeated: false,
       active: true,
-      selectedPowerups: []
+      selectedPowerups: [],
+      heroDamageDealt
     };
 
     setActiveRun(initialRun);
@@ -1066,7 +1112,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!squadHero || squadHero.hp <= 0) return prev;
 
       const updatedSquad = { ...prev.livingSquad };
-      updatedSquad[heroId].hp = Math.min(squadHero.maxHp, squadHero.hp + Math.round(squadHero.maxHp * 0.20));
+      updatedSquad[heroId].hp = Math.min(squadHero.maxHp, squadHero.hp + Math.round(squadHero.maxHp * 0.15));
 
       return {
         ...prev,
@@ -1082,7 +1128,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       for (const heroId of Object.keys(updatedSquad)) {
         const hero = updatedSquad[heroId];
         if (hero && hero.hp > 0) {
-          hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * 0.20));
+          hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * 0.15));
         }
       }
       return { ...prev, livingSquad: updatedSquad };
@@ -1154,12 +1200,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           { title: 'Divine Shield', description: 'Grant Warrior +15% Health', classTag: 'WARRIOR' as HeroClass, type: 'stat' as const, value: 0.15 },
           { title: 'Shield Slam', description: 'Warrior attacks stun targets', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Vampiric Blade', description: 'Warrior gains +3% Life Steal', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.03 },
+          { title: 'Second Wind', description: 'Warrior heals 2% max HP per second (under 50% HP)', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.02 },
           { title: 'Sharpshooter', description: 'Grant Ranger +10% Damage', classTag: 'RANGER' as HeroClass, type: 'stat' as const, value: 0.10 },
           { title: 'Double Shot', description: 'Ranger fires twice as fast', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Mana Flow', description: 'Grant Wizard +20% Magical Power', classTag: 'WIZARD' as HeroClass, type: 'stat' as const, value: 0.20 },
-          { title: 'Fireball Strike', description: 'Wizard spells explode in area', classTag: 'WIZARD' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Fireball Strike', description: 'Increases spell explosion radius', classTag: 'WIZARD' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Rejuvenate', description: 'Heal all squad members 25% HP', type: 'heal' as const, value: 0.25 },
-          { title: 'Iron Will', description: 'Boost All Defense by +10%', type: 'stat' as const, value: 0.10 }
+          { title: 'Iron Will', description: 'Boost All Defense by +10%', type: 'stat' as const, value: 0.10 },
+          { title: 'Charge', description: 'Warrior charges nearest enemy when clear', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Block Mastery', description: 'Warrior gains +7% Block Chance', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.07 },
+          { title: 'Poison Arrow', description: 'Ranger arrows apply stacking poison', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 }
         ];
 
         // Filter choices to only match living classes (or be generic)
@@ -1219,7 +1269,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       itemsAcquired: [...activeRun.runBag],
       powerupsSelected: activeRun.selectedPowerups || [],
       currentBiome: activeRun.currentBiome,
-      currentChamber: activeRun.currentChamber
+      currentChamber: activeRun.currentChamber,
+      heroDamageDealt: activeRun.heroDamageDealt ? { ...activeRun.heroDamageDealt } : {}
     });
 
     // Return home with loot & gold
@@ -1243,8 +1294,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check unlocks
     let newlyUnlockedClasses: string[] = [];
 
-    // Milestone 2: Wizard/Sorceress unlock on Biome 1 boss defeat (chamber 5)
-    if (activeRun.currentBiome === 1 && activeRun.currentChamber === 5 && success) {
+    // Milestone 2: Wizard/Sorceress unlock on Biome 2 boss defeat (chamber 5)
+    if (activeRun.currentBiome === 2 && activeRun.currentChamber === 5 && success) {
       newlyUnlockedClasses.push('hero_wizard');
     }
 
@@ -1258,10 +1309,83 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setRunsCount(r => r + 1);
     setActiveRun(null);
-    restockShop(); // restock shop on return
+    setRestockCount(0);
+    restockShop(true); // free restock on return
   };
 
   // NPC quest triggers
+
+  // Tutorial
+  const CHEF_PORTRAIT = import.meta.env.BASE_URL + 'warrior_chef.png';
+
+  const TUTORIAL_DIALOGUES: Record<number, DialogueLine[]> = {
+    1: [
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Ah, a fresh commander! Welcome to the Guildmaster's Hall. Let me show you the ropes before you send your heroes into the dungeon." },
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "First — take a look at the Equipment Board in the center. Click any slot on the armor layout, then select a piece of gear from the list that appears below it to equip it." },
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "You start with a bow and a leather cap in your bag. Click the Weapon or Helm slot to see what fits there, then click an item from the list to equip it!" },
+    ],
+    2: [
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Well done! Now head over to the Merchant's Shop — that purple building up top. Click it to browse items for sale." },
+    ],
+    3: [
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "The Merchant stocks weapons, armor, and powerful consumables. Hit Restock anytime to refresh what's available. Items range from Common all the way up to Legendary!" },
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Now — see that red building? That's the Blacksmith's Forge. Click it to see what it offers." },
+    ],
+    4: [
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "The Forge is where your gear gets serious. Upgrade an item to push its stats higher, Reforge its Rarity to add new affixes and promote it to the next tier, or use the Affix Reroll Engine to re-roll a specific bonus on it." },
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Last stop — the golden Tactical War Table. Click it to set how each hero behaves in battle." },
+    ],
+    5: [
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Temperament governs your heroes' instincts. Aggressive heroes charge the nearest enemy. Defensive heroes hold back and dodge. Exploratory heroes seek out chests and cages. Passive heroes try to avoid danger altogether." },
+      { speaker: 'Town Chef', portrait: CHEF_PORTRAIT, text: "Mix and match to suit your squad! When you're ready, hit Deploy Expedition to begin your crawl. Good luck, Commander — the Guild is counting on you!" },
+    ],
+  };
+
+  // Auto-fire Step 1 tutorial on first hub load
+  const tutorialFiredRef = useRef(false);
+  useEffect(() => {
+    if (activeSlot === null || activeRun !== null) return;
+    if (questState.townTutorialStep === 0 && !tutorialFiredRef.current) {
+      tutorialFiredRef.current = true;
+      // Small delay so the hub renders before dialogue opens
+      setTimeout(() => {
+        setQuestState(prev => ({ ...prev, townTutorialStep: 1 }));
+        setActiveDialogue(TUTORIAL_DIALOGUES[1]);
+      }, 600);
+    }
+  }, [activeSlot, activeRun, questState.townTutorialStep]);
+
+  // Mark tutorial complete when player deploys from the final step
+  useEffect(() => {
+    if (activeRun !== null && questState.townTutorialStep === 6) {
+      setQuestState(prev => ({ ...prev, townTutorialStep: -1 }));
+    }
+  }, [activeRun, questState.townTutorialStep]);
+
+  const advanceTownTutorial = (toStep: number) => {
+    setQuestState(prev => ({ ...prev, townTutorialStep: toStep }));
+    const dialogue = TUTORIAL_DIALOGUES[toStep];
+    if (dialogue) {
+      // Queue after any active dialogue finishes
+      if (!activeDialogue) {
+        setActiveDialogue(dialogue);
+      } else {
+        dialogueQueue.current.push(dialogue);
+      }
+    }
+  };
+
+  const skipTownTutorial = () => {
+    dialogueQueue.current = [];
+    setActiveDialogue(null);
+    setQuestState(prev => ({ ...prev, townTutorialStep: -1 }));
+  };
+
+  const resetTownTutorial = () => {
+    tutorialFiredRef.current = false;
+    setQuestState(prev => ({ ...prev, townTutorialStep: 0 }));
+  };
+
   const enqueueDialogue = (dialogue: DialogueLine[]) => {
     if (!activeDialogue) {
       setActiveDialogue(dialogue);
@@ -1276,6 +1400,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setActiveDialogue(next || null);
     } else {
       setActiveDialogue(null);
+      // Tutorial step auto-advancement after dialogue closes
+      setQuestState(prev => {
+        const t = prev.townTutorialStep;
+        // Step 1 done → step 2 (shop building highlighted)
+        if (t === 1) return { ...prev, townTutorialStep: 2 };
+        // Step 3 done (shop dialogue) → step 4 (forge building highlighted)
+        if (t === 3) return { ...prev, townTutorialStep: 4 };
+        // Step 4 done (forge dialogue) → step 5 (war table highlighted)
+        if (t === 4) return { ...prev, townTutorialStep: 5 };
+        // Step 5 done → step 6 (deploy button highlighted)
+        if (t === 5) return { ...prev, townTutorialStep: 6 };
+        return prev;
+      });
     }
   };
 
@@ -1288,19 +1425,55 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 1. Check Chef Quest progression
     const step = questState.chefQuestStep;
     const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+    const wizardUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
+    const isWizardUnlocked = wizardUnlocked || (currentBiome === 1 && currentChamber === 5 && success);
 
-    if (currentBiome === 1 && currentChamber === 5 && success) {
+    if (isWizardUnlocked && !warriorUnlocked) {
+      // Unlocking the sorceress before the warrior, upon returning to town, defaults the warrior to saying their special dialogue and joining the roster, unlocking extra heroes slots.
+      setQuestState(prev => ({ ...prev, chefQuestStep: 3, warriorSurvivedBoss: false }));
+      setRoster(prev => prev.map(hero => {
+        if (hero.character_id === 'hero_warrior') return { ...hero, unlocked: true };
+        return hero;
+      }));
+      setSquad(prev => {
+        const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+        const updatedMaxSlots = Math.max(2, maxSlots);
+        if (prev.length < updatedMaxSlots && !prev.includes('hero_warrior')) {
+          return [...prev, 'hero_warrior'];
+        }
+        return prev;
+      });
+
+      enqueueDialogue([
+        {
+          speaker: "Town Chef",
+          portrait: import.meta.env.BASE_URL + "warrior_chef.png",
+          text: "Guildmaster! You... you defeated the boss and saved my daughter! She returned safely to the tavern."
+        },
+        {
+          speaker: "Town Chef",
+          portrait: import.meta.env.BASE_URL + "warrior_chef.png",
+          text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+        },
+        {
+          speaker: "Town Chef",
+          portrait: import.meta.env.BASE_URL + "warrior_chef.png",
+          text: "I used to be a Frontline Shield-Bearer of the Iron Vanguard. I'm hanging up my chef apron and joining your barracks right now. My seasoned shield is at your service!"
+        }
+      ]);
+    } else if (currentBiome === 1 && currentChamber === 5 && success) {
       // Biome 1 Boss defeated! (chamber 5 = boss fight)
       if (!warriorUnlocked) {
         // Rule 1: Defeated boss before warrior unlocked. Chef is thankful and joins!
-        setQuestState({ chefQuestStep: 3, warriorSurvivedBoss: false });
+        setQuestState(prev => ({ ...prev, chefQuestStep: 3, warriorSurvivedBoss: false }));
         setRoster(prev => prev.map(hero => {
           if (hero.character_id === 'hero_warrior') return { ...hero, unlocked: true };
           return hero;
         }));
         setSquad(prev => {
           const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
-          if (prev.length < maxSlots && !prev.includes('hero_warrior')) {
+          const updatedMaxSlots = Math.max(2, maxSlots);
+          if (prev.length < updatedMaxSlots && !prev.includes('hero_warrior')) {
             return [...prev, 'hero_warrior'];
           }
           return prev;
@@ -1404,6 +1577,45 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const talkToTownChef = () => {
     const step = questState.chefQuestStep;
+    const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+    const wizardUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
+
+    if (wizardUnlocked && !warriorUnlocked) {
+      setQuestState(prev => ({ ...prev, chefQuestStep: 3 }));
+      setRoster(prev => prev.map(hero => {
+        if (hero.character_id === 'hero_warrior') {
+          return { ...hero, unlocked: true };
+        }
+        return hero;
+      }));
+      setSquad(prev => {
+        const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+        const updatedMaxSlots = Math.max(2, maxSlots);
+        if (prev.length < updatedMaxSlots && !prev.includes('hero_warrior')) {
+          return [...prev, 'hero_warrior'];
+        }
+        return prev;
+      });
+      enqueueDialogue([
+        {
+          speaker: "Town Chef",
+          portrait: "/warrior_chef.png",
+          text: "Guildmaster! You... you defeated the boss and saved my daughter! She returned safely to the tavern."
+        },
+        {
+          speaker: "Town Chef",
+          portrait: "/warrior_chef.png",
+          text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+        },
+        {
+          speaker: "Town Chef",
+          portrait: "/warrior_chef.png",
+          text: "I used to be a Frontline Shield-Bearer of the Iron Vanguard. I'm hanging up my chef apron and joining your barracks right now. My seasoned shield is at your service!"
+        }
+      ]);
+      return;
+    }
+
     if (step === 0) {
       enqueueDialogue([
         {
@@ -1436,7 +1648,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       ]);
     } else if (step === 2) {
-      setQuestState({ chefQuestStep: 3 });
+      setQuestState(prev => ({ ...prev, chefQuestStep: 3 }));
       setRoster(prev => prev.map(hero => {
         if (hero.character_id === 'hero_warrior') {
           return { ...hero, unlocked: true };
@@ -1507,6 +1719,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sharedBag,
       gold,
       runsCount,
+      restockCount,
       squad,
       temperaments,
       shopInventory,
@@ -1548,6 +1761,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activeDialogue,
       enqueueDialogue,
       showNextDialogue,
+
+      townTutorialStep: questState.townTutorialStep,
+      advanceTownTutorial,
+      skipTownTutorial,
+      resetTownTutorial,
 
       activeSlot,
       loadSaveSlot,

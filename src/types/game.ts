@@ -16,6 +16,7 @@ export interface ItemStats {
   critChance?: number; // critical strike percentage (e.g. +5%)
   lifeSteal?: number;  // status trigger (e.g. 0.05 for 5%)
   chainChance?: number; // proc-on-hit chain lightning chance
+  atkCooldownReduction?: number; // attack cooldown reduction percentage (e.g. 0.10 for 10%)
 }
 
 export interface Item {
@@ -89,6 +90,7 @@ export interface DungeonRun {
   bossDefeated: boolean;
   active: boolean;
   selectedPowerups: string[];
+  heroDamageDealt?: Record<string, number>;
 }
 
 export interface CompletedRunSummary {
@@ -98,11 +100,13 @@ export interface CompletedRunSummary {
   powerupsSelected: string[];
   currentBiome: number;
   currentChamber: number;
+  heroDamageDealt?: Record<string, number>;
 }
 
 export interface NPCQuestState {
   chefQuestStep: number; // 0, 1, 2, 3 (Warrior unlock steps)
   warriorSurvivedBoss?: boolean;
+  townTutorialStep: number; // 0=not started, 1-5=active step, -1=complete
 }
 
 export interface DialogueLine {

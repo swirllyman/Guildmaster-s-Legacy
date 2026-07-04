@@ -35,7 +35,7 @@ export const CampIntermission: React.FC = () => {
     advanceChamber
   } = useGame();
 
-  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
+  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(squad[0] ?? null);
   const [selectedBagItemId, setSelectedBagItemId] = useState<string | null>(null);
   const [showReviveModal, setShowReviveModal] = useState<boolean>(false);
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
@@ -195,8 +195,10 @@ export const CampIntermission: React.FC = () => {
             >
               <div className="fire-pit-glow" />
               <img src={import.meta.env.BASE_URL + "campfire.png"} alt="Campfire" className="campfire-image-sprite animate-pulse" />
-              {healedHeroes.length > 0 && (
+              {healedHeroes.length > 0 ? (
                 <div className="campfire-rested-label">Rested</div>
+              ) : (
+                <div className="campfire-instruction-label animate-pulse">Click Fire to Heal Party</div>
               )}
             </div>
 
@@ -222,7 +224,7 @@ export const CampIntermission: React.FC = () => {
                       className="camp-revive-btn"
                       onClick={() => setShowReviveModal(true)}
                     >
-                      Revive Ally
+                      Revive<br />Ally
                     </button>
                   )}
                 </div>

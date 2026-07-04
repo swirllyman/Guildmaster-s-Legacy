@@ -6,7 +6,8 @@ export const MainMenu: React.FC = () => {
   const {
     loadSaveSlot,
     deleteSaveSlot,
-    getSaveSlotSummary
+    getSaveSlotSummary,
+    resetTownTutorial,
   } = useGame();
 
   const [view, setView] = useState<'main' | 'play' | 'options'>('main');
@@ -288,7 +289,21 @@ export const MainMenu: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 5. Wipe caching */}
+                {/* 5. Reset Tutorial */}
+                <div className="options-row border-b border-gray-900 py-3">
+                  <div className="options-row-left">
+                    <span className="options-label">Reset Tutorial</span>
+                    <span className="options-sub">Re-play the town overview tutorial on next hub visit</span>
+                  </div>
+                  <button 
+                    onClick={() => resetTownTutorial()}
+                    className="opt-toggle-btn"
+                  >
+                    <RotateCcw size={11} className="inline mr-1" /> Reset
+                  </button>
+                </div>
+
+                {/* 6. Wipe caching */}
                 <div className="options-row py-4">
                   <div className="options-row-left">
                     <span className="options-label text-red-400 font-bold">Wipe Hard Cache</span>

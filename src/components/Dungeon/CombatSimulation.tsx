@@ -50,6 +50,16 @@ interface SimulatedEntity {
   velX?: number;
   velY?: number;
   lootTimer?: number;
+  healTimer?: number;
+  chargeTimer?: number;
+  charging?: boolean;
+  chargeStartX?: number;
+  chargeStartY?: number;
+  chargeEndX?: number;
+  chargeEndY?: number;
+  chargeProgress?: number;
+  chargeTargetId?: string;
+  chargeDamage?: number;
 }
 
 interface FloatingText {
@@ -64,12 +74,16 @@ const powerupDescriptions: Record<string, string> = {
   'Divine Shield': 'Grant Warrior +15% Health per stack',
   'Shield Slam': 'Warrior attacks stun targets per stack',
   'Vampiric Blade': 'Warrior gains +3% Life Steal per stack',
+  'Second Wind': 'Warrior heals 2% max HP per second per stack (only under 50% HP)',
   'Sharpshooter': 'Grant Ranger +10% Damage per stack',
   'Double Shot': 'Ranger attack speed +30% per stack (diminishing, capped at 75%)',
   'Mana Flow': 'Grant Sorceress +20% Magical Power per stack',
-  'Fireball Strike': 'Sorceress spells explode in area per stack',
+  'Fireball Strike': 'Increases spell explosion radius per stack',
   'Rejuvenate': 'Heal all squad members 25% HP (instant)',
-  'Iron Will': 'Boost All Defense by +10% per stack'
+  'Iron Will': 'Boost All Defense by +10% per stack',
+  'Charge': 'Warrior charges nearest enemy (no melee threats). Cooldown 20s (-2s/level, min 5s)',
+  'Block Mastery': 'Warrior gains +7% Block Chance per stack',
+  'Poison Arrow': 'Ranger arrows poison target (stacks x5, 1+1.5/level dmg per 2s, max 10)'
 };
 
 interface Particle {
@@ -80,6 +94,34 @@ interface Particle {
   color: string;
   size: number;
   life: number;
+}
+
+interface Projectile {
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  attackerId: string;
+  targetId: string;
+  speed: number;
+  damage: number;
+  isMitigated: boolean;
+  color: string;
+  size: number;
+  trail: { x: number; y: number }[];
+  life: number;
+  isAoE?: boolean;
+  isPoisoned?: boolean;
+  poisonLevel?: number;
+}
+
+interface SlashEffect {
+  x: number;
+  y: number;
+  angle: number;
+  color: string;
+  life: number;
+  radius?: number;
 }
 
 const slotIcons: Record<EquipmentSlot, any> = {
@@ -148,7 +190,7 @@ export const CombatSimulation: React.FC = () => {
   }, [combatLog]);
 
   // Camp states (pre-combat preparation phase)
-  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
+  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(squad[0] ?? null);
   const [selectedBagItemId, setSelectedBagItemId] = useState<string | null>(null);
   const [showReviveModal, setShowReviveModal] = useState<boolean>(false);
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
@@ -180,6 +222,8 @@ export const CombatSimulation: React.FC = () => {
   const entitiesRef = useRef<SimulatedEntity[]>([]);
   const floatingTextsRef = useRef<FloatingText[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const projectilesRef = useRef<Projectile[]>([]);
+  const slashEffectsRef = useRef<SlashEffect[]>([]);
   const gridMapRef = useRef<number[][]>([]); // 0: walkable, 1: wall
   const fogMapRef = useRef<boolean[][]>([]); // Fog of war
   const lastUpdateRef = useRef<number>(0);
@@ -192,6 +236,7 @@ export const CombatSimulation: React.FC = () => {
   const activeRunRef = useRef(activeRun);
   const bossDialogueShownRef = useRef<boolean>(false);
   const activeDialogueRef = useRef(activeDialogue);
+  const poisonStacksRef = useRef<Map<string, {stacks: number, timer: number, level: number}>>(new Map());
 
   useEffect(() => {
     isPausedRef.current = isPaused;
@@ -201,8 +246,27 @@ export const CombatSimulation: React.FC = () => {
     speedMultiplierRef.current = speedMultiplier;
   }, [speedMultiplier]);
 
+  const prevDraftingRef = useRef(activeRun?.drafting ?? false);
+
   useEffect(() => {
     activeRunRef.current = activeRun;
+    
+    // Check if drafting just transitioned from true to false (i.e. powerup selected)
+    const wasDrafting = prevDraftingRef.current;
+    const isCurrentlyDrafting = activeRun?.drafting ?? false;
+    
+    if (wasDrafting && !isCurrentlyDrafting && activeRun) {
+      // Sync health back to active entitiesRef.current
+      entitiesRef.current.forEach(ent => {
+        const squadHero = activeRun.livingSquad[ent.id];
+        if (squadHero) {
+          ent.hp = squadHero.hp;
+          ent.maxHp = squadHero.maxHp;
+        }
+      });
+    }
+    
+    prevDraftingRef.current = isCurrentlyDrafting;
   }, [activeRun]);
 
   useEffect(() => {
@@ -461,7 +525,15 @@ export const CombatSimulation: React.FC = () => {
       if (!hero || !runStatus || runStatus.hp <= 0) return;
 
       const type = hero.class.toLowerCase() as any;
-      const combinedSpeed = hero.base_stats.speed_mult * (hero.class === 'RANGER' ? 1.2 : 0.9);
+      let combinedSpeed = hero.base_stats.speed_mult * (hero.class === 'RANGER' ? 1.2 : 0.9);
+
+      // Sum speed from all equipped items
+      if (hero.equipment) {
+        for (const key in hero.equipment) {
+          const item = hero.equipment[key as EquipmentSlot];
+          if (item?.stats?.speed) combinedSpeed *= (1 + item.stats.speed / 100);
+        }
+      }
 
       // Class base damage + flat weapon damage from equipped weapon
       const classBaseDmg = hero.class === 'WARRIOR' ? 12 : hero.class === 'WIZARD' ? 16 : 9;
@@ -560,7 +632,7 @@ export const CombatSimulation: React.FC = () => {
     }
 
     // 4. Scatter groups of enemies sporadically throughout the dungeon
-    const groupCount = 4 + activeRun.currentBiome * 2;
+    const groupCount = (4 + activeRun.currentBiome * 2) * activeRun.currentChamber;
     
     for (let g = 0; g < groupCount; g++) {
       let gx = 6;
@@ -568,7 +640,7 @@ export const CombatSimulation: React.FC = () => {
       let attempts = 0;
       let valid = false;
 
-      while (attempts < 15 && !valid) {
+      while (attempts < 30 && !valid) {
         gx = 6 + Math.floor(Math.random() * 28); // columns 6 to 33
         gy = 3 + Math.floor(Math.random() * 34); // rows 3 to 36
         attempts++;
@@ -584,7 +656,7 @@ export const CombatSimulation: React.FC = () => {
         for (const existing of spawnedEntities) {
           if (existing.type === 'enemy' || existing.type === 'elite') {
             const dist = Math.abs(existing.gridX - gx) + Math.abs(existing.gridY - gy);
-            if (dist < 6) {
+            if (dist < 4) {
               tooCloseToOther = true;
               break;
             }
@@ -609,77 +681,128 @@ export const CombatSimulation: React.FC = () => {
 
         const mobType = isElite ? 'elite' : spawnAsArcher ? 'archer' : 'enemy';
         const mobHp = mobType === 'elite'
-          ? Math.round((140 + chamber * 25) * Math.pow(1.50, biome))
+          ? Math.round((140 + chamber * 25) * Math.pow(1.50, biome)) * 3
           : scaledHp(biome, chamber);
         const mobDmg = mobType === 'elite'
           ? Math.round((12 + chamber * 3)  * Math.pow(1.35, biome))
           : scaledDmg(biome, chamber);
 
-        spawnedEntities.push({
-          id: `enemy-${g}-0`,
-          name: mobType === 'elite' ? 'Dungeon Warden' : mobType === 'archer' ? 'Bone Archer' : 'Feral Ghoul',
-          type: mobType,
-          gridX: gx,
-          gridY: gy,
-          posX: gx * tileSize + tileSize / 2,
-          posY: gy * tileSize + tileSize / 2,
-          hp: mobHp,
-          maxHp: mobHp,
-          speed: mobType === 'elite' ? 1.44 : mobType === 'archer' ? 1.0 : 1.32,
-          attackRange: mobType === 'archer' ? 4.5 : 1.2,
-          attackCooldown: mobType === 'archer' ? 1.5 : 0,
-          damage: mobDmg,
-          lifeSteal: 0,
-          tempBuffs: [],
-          color: mobType === 'elite' ? '#f87171' : mobType === 'archer' ? '#fb923c' : '#e2e8f0',
-          isDead: false,
-          aggroed: false
-        });
+        if (biome >= 2 && mobType === 'enemy') {
+          // Spawn a swarm of 3-6 Swarm Skitterers that stay together
+          const swarmSize = 3 + Math.floor(Math.random() * 4);
+          const swarmSpawnPoints: {x: number, y: number}[] = [{x: gx, y: gy}];
+          const directions = [
+            {dx: 1, dy: 0},
+            {dx: -1, dy: 0},
+            {dx: 0, dy: 1},
+            {dx: 0, dy: -1},
+            {dx: 1, dy: 1},
+            {dx: -1, dy: 1},
+            {dx: 1, dy: -1},
+            {dx: -1, dy: -1}
+          ];
+          for (const dir of directions) {
+            if (swarmSpawnPoints.length >= swarmSize) break;
+            const nx = gx + dir.dx;
+            const ny = gy + dir.dy;
+            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && grid[ny]?.[nx] === 0) {
+              const occupied = spawnedEntities.some(e => e.gridX === nx && e.gridY === ny);
+              if (!occupied) {
+                swarmSpawnPoints.push({x: nx, y: ny});
+              }
+            }
+          }
 
-        if (mobType === 'elite') {
+          swarmSpawnPoints.forEach((pt, idx) => {
+            spawnedEntities.push({
+              id: `enemy-${g}-${idx}`,
+              name: 'Swarm Skitterer',
+              type: 'enemy',
+              gridX: pt.x,
+              gridY: pt.y,
+              posX: pt.x * tileSize + tileSize / 2,
+              posY: pt.y * tileSize + tileSize / 2,
+              hp: Math.round(mobHp * 0.85),
+              maxHp: Math.round(mobHp * 0.85),
+              speed: 2.5,
+              attackRange: 1.2,
+              attackCooldown: 0,
+              damage: Math.round(mobDmg * 0.60),
+              lifeSteal: 0,
+              tempBuffs: [],
+              color: '#a3e635', // Lime green
+              isDead: false,
+              aggroed: false
+            });
+          });
+        } else {
+          // Standard enemy spawning
           spawnedEntities.push({
-            id: 'chest',
-            name: 'Scavenger Chest',
-            type: 'chest',
+            id: `enemy-${g}-0`,
+            name: mobType === 'elite' ? 'Dungeon Warden' : mobType === 'archer' ? 'Bone Archer' : 'Feral Ghoul',
+            type: mobType,
             gridX: gx,
             gridY: gy,
             posX: gx * tileSize + tileSize / 2,
             posY: gy * tileSize + tileSize / 2,
-            hp: 1,
-            maxHp: 1,
-            speed: 0,
-            attackRange: 0,
-            attackCooldown: 9999,
-            damage: 0,
+            hp: mobHp,
+            maxHp: mobHp,
+            speed: mobType === 'elite' ? 1.44 : mobType === 'archer' ? 1.0 : 1.716,
+            attackRange: mobType === 'archer' ? 4.5 : 1.2,
+            attackCooldown: mobType === 'archer' ? 1.5 : 0,
+            damage: mobDmg,
             lifeSteal: 0,
             tempBuffs: [],
-            color: '#facc15',
-            isDead: false
-          });
-        }
-
-        // Spawn melee sibling for melee packs only
-        if (mobType === 'enemy' && gy + 1 < gridSize - 2 && grid[gy+1]?.[gx] === 0) {
-          spawnedEntities.push({
-            id: `enemy-${g}-1`,
-            name: 'Feral Ghoul',
-            type: 'enemy',
-            gridX: gx,
-            gridY: gy + 1,
-            posX: gx * tileSize + tileSize / 2,
-            posY: (gy + 1) * tileSize + tileSize / 2,
-            hp: scaledHp(biome, chamber),
-            maxHp: scaledHp(biome, chamber),
-            speed: 1.32,
-            attackRange: 1.2,
-            attackCooldown: 0,
-            damage: scaledDmg(biome, chamber),
-            lifeSteal: 0,
-            tempBuffs: [],
-            color: '#e2e8f0',
+            color: mobType === 'elite' ? '#f87171' : mobType === 'archer' ? '#fb923c' : '#e2e8f0',
             isDead: false,
             aggroed: false
           });
+
+          if (mobType === 'elite') {
+            spawnedEntities.push({
+              id: 'chest',
+              name: 'Scavenger Chest',
+              type: 'chest',
+              gridX: gx,
+              gridY: gy,
+              posX: gx * tileSize + tileSize / 2,
+              posY: gy * tileSize + tileSize / 2,
+              hp: 1,
+              maxHp: 1,
+              speed: 0,
+              attackRange: 0,
+              attackCooldown: 9999,
+              damage: 0,
+              lifeSteal: 0,
+              tempBuffs: [],
+              color: '#facc15',
+              isDead: false
+            });
+          }
+
+          // Spawn melee sibling for melee packs only (outside of Biome 2, where we spawned swarms instead)
+          if (mobType === 'enemy' && gy + 1 < gridSize - 2 && grid[gy+1]?.[gx] === 0) {
+            spawnedEntities.push({
+              id: `enemy-${g}-1`,
+              name: 'Feral Ghoul',
+              type: 'enemy',
+              gridX: gx,
+              gridY: gy + 1,
+              posX: gx * tileSize + tileSize / 2,
+              posY: (gy + 1) * tileSize + tileSize / 2,
+              hp: scaledHp(biome, chamber),
+              maxHp: scaledHp(biome, chamber),
+              speed: 1.5,
+              attackRange: 1.2,
+              attackCooldown: 0,
+              damage: scaledDmg(biome, chamber),
+              lifeSteal: 0,
+              tempBuffs: [],
+              color: '#e2e8f0',
+              isDead: false,
+              aggroed: false
+            });
+          }
         }
       }
     }
@@ -770,6 +893,396 @@ export const CombatSimulation: React.FC = () => {
 
     const entities = entitiesRef.current;
     const heroTypes = new Set(['ranger','warrior','wizard','rogue','paladin','druid','necromancer']);
+
+    // Poison tick damage processing
+    poisonStacksRef.current.forEach((poison, entityId) => {
+      const ent = entities.find(e => e.id === entityId);
+      if (!ent || ent.isDead) {
+        poisonStacksRef.current.delete(entityId);
+        return;
+      }
+      poison.timer += dt;
+      if (poison.timer >= 2.0) {
+        poison.timer -= 2.0;
+        // Damage per tick per stack: min(10, 1 + 1.5*(level-1))
+        const dmgPerStack = Math.min(10, 1 + 1.5 * (poison.level - 1));
+        const totalDmg = Math.round(dmgPerStack * poison.stacks);
+        if (totalDmg > 0) {
+          ent.hp = Math.max(ent.hp - totalDmg, 0);
+          floatingTextsRef.current.push({
+            text: `☠ -${totalDmg}`,
+            x: ent.posX,
+            y: ent.posY - 10,
+            color: '#22c55e',
+            life: 1.2
+          });
+          // Green poison particles
+          for (let k = 0; k < 4; k++) {
+            particlesRef.current.push({
+              x: ent.posX,
+              y: ent.posY,
+              vx: (Math.random() - 0.5) * 40,
+              vy: (Math.random() - 0.5) * 40,
+              color: '#22c55e',
+              size: 1.5 + Math.random() * 1.5,
+              life: 0.6
+            });
+          }
+          // Sync HP to livingSquad if it's a hero (shouldn't be, but safety)
+          if (run.livingSquad[ent.id]) {
+            run.livingSquad[ent.id].hp = ent.hp;
+          }
+          // Death from poison
+          if (ent.hp <= 0) {
+            ent.isDead = true;
+            poisonStacksRef.current.delete(entityId);
+            setCombatLog(log => [...log, `💀 ${ent.name} has fallen to poison.`].slice(-40));
+            if (run.livingSquad[ent.id]) {
+              run.livingSquad[ent.id].hp = 0;
+              triggerToast(`💀 ${ent.name} has fallen!`, 'death');
+            }
+            if (!heroTypes.has(ent.type)) {
+              const xpDropped = 25 + Math.round(Math.random() * 15) + run.currentBiome * 5;
+              addRunXp(xpDropped);
+              floatingTextsRef.current.push({
+                text: `+${xpDropped} XP`,
+                x: ent.posX + 8,
+                y: ent.posY - 12,
+                color: '#c084fc',
+                life: 1.2
+              });
+            }
+          }
+        }
+      }
+    });
+
+    // Update projectiles
+    projectilesRef.current.forEach(proj => {
+      const target = entities.find(e => e.id === proj.targetId && !e.isDead);
+      if (!target) {
+        proj.life = 0;
+        return;
+      }
+      // Track toward target's current position
+      const tdx = target.posX - proj.x;
+      const tdy = target.posY - proj.y;
+      const tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+      if (tdist < 8) {
+        // Impact! Apply damage
+        target.hp = Math.max(target.hp - proj.damage, 0);
+
+        // Floating text at impact
+        floatingTextsRef.current.push({
+          text: proj.isMitigated ? `Blocked!` : `-${proj.damage}`,
+          x: target.posX,
+          y: target.posY - 8,
+          color: proj.isMitigated ? '#60a5fa' : '#fbbf24',
+          life: 1.0
+        });
+
+        // Poison Arrow: apply poison stacks on impact
+        if (proj.isPoisoned && !heroTypes.has(target.type)) {
+          const existing = poisonStacksRef.current.get(target.id);
+          const newStacks = existing ? Math.min(existing.stacks + 1, 5) : 1;
+          poisonStacksRef.current.set(target.id, {
+            stacks: newStacks,
+            timer: existing?.timer ?? 0,
+            level: proj.poisonLevel ?? 1
+          });
+          floatingTextsRef.current.push({
+            text: `☠ Poison (${newStacks})`,
+            x: target.posX,
+            y: target.posY - 16,
+            color: '#22c55e',
+            life: 1.2
+          });
+        }
+
+        // Impact particles
+        for (let k = 0; k < 8; k++) {
+          let pCol = proj.color;
+          if (proj.isAoE) {
+            const rand = Math.random();
+            pCol = rand < 0.4 ? '#ef4444' : rand < 0.8 ? '#f97316' : '#fbbf24'; // Red, orange, yellow (fire)
+          }
+          particlesRef.current.push({
+            x: target.posX,
+            y: target.posY,
+            vx: (Math.random() - 0.5) * 100,
+            vy: (Math.random() - 0.5) * 100,
+            color: pCol,
+            size: 2 + Math.random() * 2,
+            life: 0.5
+          });
+        }
+
+        // Wizard/Sorceress AoE explosion visual effect and splash damage
+        if (proj.isAoE) {
+          // Circular explosion blast particles (wow factor!)
+          const numExplosionParticles = 24;
+          for (let k = 0; k < numExplosionParticles; k++) {
+            const angle = (k / numExplosionParticles) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
+            const speed = 60 + Math.random() * 80;
+            const rand = Math.random();
+            const pCol = rand < 0.4 ? '#ef4444' : rand < 0.8 ? '#f97316' : '#fbbf24'; // Red, orange, yellow (fire)
+            particlesRef.current.push({
+              x: target.posX,
+              y: target.posY,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              color: pCol,
+              size: 2 + Math.random() * 3,
+              life: 0.6 + Math.random() * 0.3
+            });
+          }
+
+          const fireballCount = (run.selectedPowerups ?? []).filter(p => p === 'Fireball Strike').length;
+          const aoeRadius = (1.5 + fireballCount * 0.5) * tileSize;
+          entities.forEach(other => {
+            if (other.id === target.id || other.isDead) return;
+
+            const isTargetHero = heroTypes.has(target.type);
+            const isOtherHero = heroTypes.has(other.type);
+            if (isTargetHero !== isOtherHero) return;
+            if (other.type === 'chest' || other.type === 'cage' || other.type === 'portal' || other.type === 'item_loot') return;
+
+            const dx = other.posX - target.posX;
+            const dy = other.posY - target.posY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist <= aoeRadius) {
+              other.hp = Math.max(other.hp - proj.damage, 0);
+
+              floatingTextsRef.current.push({
+                text: proj.isMitigated ? `Blocked!` : `-${proj.damage}`,
+                x: other.posX,
+                y: other.posY - 8,
+                color: proj.isMitigated ? '#60a5fa' : '#fbbf24',
+                life: 1.0
+              });
+
+              for (let k = 0; k < 4; k++) {
+                let pCol = proj.color;
+                if (proj.isAoE) {
+                  const rand = Math.random();
+                  pCol = rand < 0.4 ? '#ef4444' : rand < 0.8 ? '#f97316' : '#fbbf24'; // Red, orange, yellow (fire)
+                }
+                particlesRef.current.push({
+                  x: other.posX,
+                  y: other.posY,
+                  vx: (Math.random() - 0.5) * 80,
+                  vy: (Math.random() - 0.5) * 80,
+                  color: pCol,
+                  size: 2 + Math.random() * 1.5,
+                  life: 0.4
+                });
+              }
+
+              if (proj.attackerId) {
+                if (!run.heroDamageDealt) {
+                  run.heroDamageDealt = {};
+                }
+                run.heroDamageDealt[proj.attackerId] = (run.heroDamageDealt[proj.attackerId] || 0) + proj.damage;
+              }
+
+              if (other.hp <= 0) {
+                other.isDead = true;
+                setCombatLog(log => [...log, `💀 ${other.name} has fallen to splash damage.`].slice(-40));
+
+                if (other.type === 'boss') {
+                  const item = generateRandomItem(run.currentBiome);
+                  item.rarity = 'Legendary';
+                  entitiesRef.current.push({
+                    id: `loot-${Date.now()}-${Math.random()}`,
+                    name: item.name,
+                    type: 'item_loot',
+                    gridX: other.gridX,
+                    gridY: other.gridY,
+                    posX: other.posX,
+                    posY: other.posY,
+                    hp: 1,
+                    maxHp: 1,
+                    speed: 2,
+                    attackRange: 0,
+                    attackCooldown: 0,
+                    damage: 0,
+                    lifeSteal: 0,
+                    tempBuffs: [],
+                    color: '#ff8000',
+                    isDead: false,
+                    lootItem: item,
+                    velX: (Math.random() - 0.5) * 10,
+                    velY: -5 - Math.random() * 8,
+                  });
+                }
+
+                if (run.livingSquad[other.id]) {
+                  run.livingSquad[other.id].hp = 0;
+                  triggerToast(`💀 ${other.name} has fallen!`, 'death');
+                }
+
+                if (!heroTypes.has(other.type)) {
+                  let goldDropped = 0;
+                  if (Math.random() < 0.50) {
+                    goldDropped = 4 + Math.round(Math.random() * 8) + run.currentBiome * 2;
+                    addRunGold(goldDropped);
+                    setCombatLog(log => [...log, `💰 ${other.name} dropped ${goldDropped} Gold!`].slice(-40));
+                    floatingTextsRef.current.push({
+                      text: `+${goldDropped}g`,
+                      x: other.posX - 8,
+                      y: other.posY - 12,
+                      color: '#facc15',
+                      life: 1.2
+                    });
+                  }
+                  const xpDropped = 25 + Math.round(Math.random() * 15) + run.currentBiome * 5;
+                  addRunXp(xpDropped);
+                  setCombatLog(log => [...log, `✨ Squad gained +${xpDropped} Team XP!`].slice(-40));
+                  floatingTextsRef.current.push({
+                    text: `+${xpDropped} XP`,
+                    x: other.posX + 8,
+                    y: other.posY - 12,
+                    color: '#c084fc',
+                    life: 1.2
+                  });
+                  if (goldDropped > 0) {
+                    triggerToast(`💰 +${goldDropped}g   ✨ +${xpDropped} XP`, 'gold');
+                  } else {
+                    triggerToast(`✨ +${xpDropped} XP`, 'xp');
+                  }
+                }
+              } else {
+                if (run.livingSquad[other.id]) {
+                  run.livingSquad[other.id].hp = other.hp;
+                }
+              }
+            }
+          });
+        }
+
+        // Lifesteal for ranged attackers on projectile impact
+        if (proj.attackerId) {
+          const shooter = entities.find(e => e.id === proj.attackerId && !e.isDead);
+          const vampBladeCountRanged = (run.selectedPowerups ?? []).filter(p => p === 'Vampiric Blade').length;
+          const effectiveRangedLifeSteal = (shooter?.lifeSteal ?? 0) + 0.03 * vampBladeCountRanged;
+          if (shooter && effectiveRangedLifeSteal > 0) {
+            const healAmount = Math.round(proj.damage * effectiveRangedLifeSteal);
+            if (healAmount > 0) {
+              const oldHp = shooter.hp;
+              shooter.hp = Math.min(shooter.hp + healAmount, shooter.maxHp);
+              const actualHeal = shooter.hp - oldHp;
+              if (actualHeal > 0) {
+                if (run.livingSquad[shooter.id]) {
+                  run.livingSquad[shooter.id].hp = shooter.hp;
+                }
+                floatingTextsRef.current.push({
+                  text: `+${actualHeal}`,
+                  x: shooter.posX,
+                  y: shooter.posY - 10,
+                  color: '#4ade80',
+                  life: 1.0
+                });
+              }
+            }
+          }
+        }
+
+        // Death handling for projectile-killed targets
+        if (target.hp <= 0) {
+          target.isDead = true;
+          setCombatLog(log => [...log, `💀 ${target.name} has fallen.`].slice(-40));
+
+          if (target.type === 'boss') {
+            const item = generateRandomItem(run.currentBiome);
+            item.rarity = 'Legendary';
+            entitiesRef.current.push({
+              id: `loot-${Date.now()}-${Math.random()}`,
+              name: item.name,
+              type: 'item_loot',
+              gridX: target.gridX,
+              gridY: target.gridY,
+              posX: target.posX,
+              posY: target.posY,
+              hp: 1,
+              maxHp: 1,
+              speed: 2,
+              attackRange: 0,
+              attackCooldown: 0,
+              damage: 0,
+              lifeSteal: 0,
+              tempBuffs: [],
+              color: '#ff8000',
+              isDead: false,
+              lootItem: item,
+              velX: (Math.random() - 0.5) * 10,
+              velY: -5 - Math.random() * 8,
+            });
+          }
+
+          if (run.livingSquad[target.id]) {
+            run.livingSquad[target.id].hp = 0;
+            triggerToast(`💀 ${target.name} has fallen!`, 'death');
+          }
+
+          // Drops on enemy monster defeat
+          if (!heroTypes.has(target.type) && target.type !== 'chest' && target.type !== 'cage' && target.type !== 'portal') {
+            let goldDropped = 0;
+            if (Math.random() < 0.50) {
+              goldDropped = 4 + Math.round(Math.random() * 8) + run.currentBiome * 2;
+              addRunGold(goldDropped);
+              setCombatLog(log => [...log, `💰 ${target.name} dropped ${goldDropped} Gold!`].slice(-40));
+              floatingTextsRef.current.push({
+                text: `+${goldDropped}g`,
+                x: target.posX - 8,
+                y: target.posY - 12,
+                color: '#facc15',
+                life: 1.2
+              });
+            }
+            const xpDropped = 25 + Math.round(Math.random() * 15) + run.currentBiome * 5;
+            addRunXp(xpDropped);
+            setCombatLog(log => [...log, `✨ Squad gained +${xpDropped} Team XP!`].slice(-40));
+            floatingTextsRef.current.push({
+              text: `+${xpDropped} XP`,
+              x: target.posX + 8,
+              y: target.posY - 12,
+              color: '#c084fc',
+              life: 1.2
+            });
+            if (goldDropped > 0) {
+              triggerToast(`💰 +${goldDropped}g   ✨ +${xpDropped} XP`, 'gold');
+            } else {
+              triggerToast(`✨ +${xpDropped} XP`, 'xp');
+            }
+          }
+        } else {
+          if (run.livingSquad[target.id]) {
+            run.livingSquad[target.id].hp = target.hp;
+          }
+        }
+
+        proj.life = 0;
+      } else {
+        // Move toward target
+        const vx = (tdx / tdist) * proj.speed;
+        const vy = (tdy / tdist) * proj.speed;
+        // Store trail point before moving
+        proj.trail.push({ x: proj.x, y: proj.y });
+        if (proj.trail.length > 4) proj.trail.shift();
+        proj.x += vx * dt;
+        proj.y += vy * dt;
+      }
+      proj.life -= dt;
+    });
+    projectilesRef.current = projectilesRef.current.filter(p => p.life > 0);
+
+    // Update slash effects
+    slashEffectsRef.current.forEach(s => {
+      s.life -= dt * 3.5;
+    });
+    slashEffectsRef.current = slashEffectsRef.current.filter(s => s.life > 0);
+
     const heroes = entities.filter(e => !e.isDead && heroTypes.has(e.type));
     const hostiles = entities.filter(e => !e.isDead && !heroTypes.has(e.type));
 
@@ -782,7 +1295,7 @@ export const CombatSimulation: React.FC = () => {
 
     // Detect boss death — show sorceress dialogue immediately in-dungeon (only on first kill)
     const wizardAlreadyUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
-    if (run.currentBiome === 1 && run.currentChamber === 5 && !bossDialogueShownRef.current && !wizardAlreadyUnlocked) {
+    if (run.currentBiome === 2 && run.currentChamber === 5 && !bossDialogueShownRef.current && !wizardAlreadyUnlocked) {
       const boss = entities.find(e => e.type === 'boss');
       if (boss && boss.isDead) {
         bossDialogueShownRef.current = true;
@@ -796,7 +1309,7 @@ export const CombatSimulation: React.FC = () => {
         const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
         if (warriorUnlocked && questState.warriorSurvivedBoss) {
           enqueueDialogue([
-            { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Ah, the ones who vanquished the terror of the second biome..." },
             { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
             { speaker: "Warrior Chef", portrait: import.meta.env.BASE_URL + "warrior_chef.png", text: "Daughter! You're safe! Oh, thank the heavens. I thought I'd lost you to these dungeons forever!" },
             { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Father? You... you're fighting again? I thought you retired to serve stews." },
@@ -805,7 +1318,7 @@ export const CombatSimulation: React.FC = () => {
           ]);
         } else {
           enqueueDialogue([
-            { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Ah, the ones who vanquished the terror of the second biome..." },
             { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
             { speaker: "Sorceress", portrait: import.meta.env.BASE_URL + "sorceress.png", text: "Now that you have shattered their control, I shall pledge my spells to your cause. Let us burn down what remains of these dungeons." }
           ]);
@@ -860,6 +1373,150 @@ export const CombatSimulation: React.FC = () => {
     // Process entity AI
     for (const ent of entities) {
       if (ent.isDead) continue;
+
+      // passive heal over time for warrior:
+      if (ent.type === 'warrior') {
+        const secondWindCount = (run.selectedPowerups ?? []).filter(p => p === 'Second Wind').length;
+        if (secondWindCount > 0) {
+          if (ent.healTimer === undefined) {
+            ent.healTimer = 0;
+          }
+          ent.healTimer += dt;
+          if (ent.healTimer >= 1.0) {
+            ent.healTimer -= 1.0;
+            // 2% max HP per stack
+            const healPerSec = Math.round(ent.maxHp * 0.02 * secondWindCount);
+            const maxSecondWindHp = Math.round(ent.maxHp * 0.5);
+            if (healPerSec > 0 && ent.hp < maxSecondWindHp) {
+              const oldHp = ent.hp;
+              ent.hp = Math.min(maxSecondWindHp, ent.hp + healPerSec);
+              const actualHeal = ent.hp - oldHp;
+              if (actualHeal > 0) {
+                if (run.livingSquad[ent.id]) {
+                  run.livingSquad[ent.id].hp = ent.hp;
+                }
+                floatingTextsRef.current.push({
+                  text: `+${actualHeal}`,
+                  x: ent.posX,
+                  y: ent.posY - 10,
+                  color: '#4ade80',
+                  life: 1.0
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Charge: Warrior-only dash ability
+      if (ent.type === 'warrior') {
+        const chargeCount = (run.selectedPowerups ?? []).filter(p => p === 'Charge').length;
+        if (chargeCount > 0) {
+          if (ent.chargeTimer === undefined) ent.chargeTimer = 0;
+          ent.chargeTimer -= dt;
+
+          if (ent.chargeTimer <= 0) {
+            // Check: no enemies within melee range (1.2 tiles)
+            const meleeRangeTiles = 1.2;
+            let enemyInMelee = false;
+            for (const e of hostiles) {
+              if (e.isDead) continue;
+              if (e.type === 'chest' || e.type === 'cage' || e.type === 'portal' || e.type === 'item_loot') continue;
+              const mdx = e.posX - ent.posX;
+              const mdy = e.posY - ent.posY;
+              const mDist = Math.sqrt(mdx * mdx + mdy * mdy) / tileSize;
+              if (mDist < meleeRangeTiles) {
+                enemyInMelee = true;
+                break;
+              }
+            }
+
+            if (!enemyInMelee) {
+              // Find nearest enemy in LoS within 10 tiles
+              let bestTarget: SimulatedEntity | null = null;
+              let bestDist = 9999;
+              for (const e of hostiles) {
+                if (e.isDead) continue;
+                if (e.type === 'chest' || e.type === 'cage' || e.type === 'portal' || e.type === 'item_loot') continue;
+                const cdx = e.posX - ent.posX;
+                const cdy = e.posY - ent.posY;
+                const cDist = Math.sqrt(cdx * cdx + cdy * cdy) / tileSize;
+                if (cDist > 10 || cDist < 1.5) continue;
+
+                // Simple LoS raycast: step from warrior to target, check for walls
+                const steps = Math.ceil(cDist * 2);
+                let blocked = false;
+                for (let s = 1; s < steps; s++) {
+                  const t = s / steps;
+                  const rx = Math.floor((ent.gridX + (e.gridX - ent.gridX) * t));
+                  const ry = Math.floor((ent.gridY + (e.gridY - ent.gridY) * t));
+                  if (grid[ry]?.[rx] === 1) {
+                    blocked = true;
+                    break;
+                  }
+                }
+                if (!blocked && cDist < bestDist) {
+                  bestDist = cDist;
+                  bestTarget = e;
+                }
+              }
+
+              if (bestTarget) {
+                // Charge: begin dash toward target
+                const angle = Math.atan2(bestTarget.posY - ent.posY, bestTarget.posX - ent.posX);
+                const chargeDist = 1.0 * tileSize;
+
+                // Try multiple distances to find a valid (open) destination
+                let finalDestPx = ent.posX;
+                let finalDestPy = ent.posY;
+                for (const distMult of [1.0, 1.2, 1.5, 2.0]) {
+                  const tryPx = bestTarget.posX - Math.cos(angle) * chargeDist * distMult;
+                  const tryPy = bestTarget.posY - Math.sin(angle) * chargeDist * distMult;
+                  const tryGX = Math.floor(tryPx / tileSize);
+                  const tryGY = Math.floor(tryPy / tileSize);
+                  if (grid[tryGY]?.[tryGX] === 0) {
+                    finalDestPx = tryPx;
+                    finalDestPy = tryPy;
+                    break;
+                  }
+                }
+
+                // Also ensure start position is valid
+                const startGX = Math.floor(ent.posX / tileSize);
+                const startGY = Math.floor(ent.posY / tileSize);
+                if (grid[startGY]?.[startGX] !== 0) {
+                  // Snap to nearest open tile before charging
+                  for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]) {
+                    const nx = startGX + dx;
+                    const ny = startGY + dy;
+                    if (grid[ny]?.[nx] === 0) {
+                      ent.posX = nx * tileSize + tileSize / 2;
+                      ent.posY = ny * tileSize + tileSize / 2;
+                      ent.gridX = nx;
+                      ent.gridY = ny;
+                      break;
+                    }
+                  }
+                }
+
+                ent.charging = true;
+                ent.chargeStartX = ent.posX;
+                ent.chargeStartY = ent.posY;
+                ent.chargeEndX = finalDestPx;
+                ent.chargeEndY = finalDestPy;
+                ent.chargeProgress = 0;
+                ent.chargeTargetId = bestTarget.id;
+                ent.chargeDamage = Math.round(ent.damage * 1.5);
+
+                // Reset cooldown: 20 - (chargeCount - 1) * 2, min 5s
+                ent.chargeTimer = Math.max(5, 20 - (chargeCount - 1) * 2);
+
+                setCombatLog(log => [...log, `⚡ Warrior charges ${bestTarget.name}!`].slice(-40));
+              }
+            }
+          }
+        }
+      }
 
       if (ent.type === 'item_loot') {
         if (ent.lootTimer === undefined) ent.lootTimer = 0;
@@ -968,18 +1625,19 @@ export const CombatSimulation: React.FC = () => {
             life: 1.0
           });
 
-          // Alert other sentries in a 5 tile radius
+          // Alert other sentries in a 4-tile radius or the same group/swarm
           entities.forEach(other => {
-            if (other.id !== ent.id && (other.type === 'enemy' || other.type === 'elite') && !other.aggroed) {
+            if (other.id !== ent.id && (other.type === 'enemy' || other.type === 'elite' || other.type === 'archer') && !other.aggroed) {
               const odx = other.gridX - ent.gridX;
               const ody = other.gridY - ent.gridY;
-              if (odx*odx + ody*ody <= 6) {
+              const isSameSwarm = ent.id.startsWith('enemy-') && other.id.startsWith('enemy-') && ent.id.split('-')[1] === other.id.split('-')[1];
+              if (isSameSwarm || (odx*odx + ody*ody <= 16)) {
                 other.aggroed = true;
                 floatingTextsRef.current.push({
-                  text: 'Alerted!',
+                  text: isSameSwarm ? 'Swarm!' : 'Alerted!',
                   x: other.posX,
                   y: other.posY - 10,
-                  color: '#f87171',
+                  color: isSameSwarm ? '#a3e635' : '#f87171',
                   life: 0.8
                 });
               }
@@ -996,6 +1654,102 @@ export const CombatSimulation: React.FC = () => {
       // Update cooldowns
       if (ent.attackCooldown > 0) {
         ent.attackCooldown -= dt;
+      }
+
+      // Charge dash: interpolate position toward destination
+      if (ent.charging && ent.chargeProgress !== undefined) {
+        ent.chargeProgress = Math.min(1, ent.chargeProgress + dt * 4.0);
+        const t = ent.chargeProgress;
+        ent.posX = ent.chargeStartX! + (ent.chargeEndX! - ent.chargeStartX!) * t;
+        ent.posY = ent.chargeStartY! + (ent.chargeEndY! - ent.chargeStartY!) * t;
+        ent.gridX = Math.floor(ent.posX / tileSize);
+        ent.gridY = Math.floor(ent.posY / tileSize);
+
+        if (ent.chargeProgress >= 1) {
+          ent.charging = false;
+
+          // Safety net: snap to nearest open tile if stuck in a wall
+          const finalGX = Math.floor(ent.posX / tileSize);
+          const finalGY = Math.floor(ent.posY / tileSize);
+          if (grid[finalGY]?.[finalGX] !== 0) {
+            for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]) {
+              const nx = finalGX + dx;
+              const ny = finalGY + dy;
+              if (grid[ny]?.[nx] === 0) {
+                ent.posX = nx * tileSize + tileSize / 2;
+                ent.posY = ny * tileSize + tileSize / 2;
+                ent.gridX = nx;
+                ent.gridY = ny;
+                break;
+              }
+            }
+          }
+          const target = entities.find(e => e.id === ent.chargeTargetId && !e.isDead);
+          if (target) {
+            const chargeDmg = ent.chargeDamage ?? 0;
+            target.hp = Math.max(target.hp - chargeDmg, 0);
+
+            floatingTextsRef.current.push({
+              text: `CHARGE! -${chargeDmg}`,
+              x: target.posX,
+              y: target.posY - 12,
+              color: '#fbbf24',
+              life: 1.5
+            });
+
+            const slashAngle = Math.atan2(target.posY - ent.posY, target.posX - ent.posX);
+            slashEffectsRef.current.push({
+              x: ent.posX,
+              y: ent.posY,
+              angle: slashAngle,
+              color: '#0070dd',
+              life: 1.0,
+              radius: 48
+            });
+
+            for (let k = 0; k < 8; k++) {
+              particlesRef.current.push({
+                x: target.posX,
+                y: target.posY,
+                vx: (Math.random() - 0.5) * 100,
+                vy: (Math.random() - 0.5) * 100,
+                color: '#fbbf24',
+                size: 2 + Math.random() * 2,
+                life: 0.5
+              });
+            }
+
+            if (!run.heroDamageDealt) run.heroDamageDealt = {};
+            run.heroDamageDealt[ent.id] = (run.heroDamageDealt[ent.id] || 0) + chargeDmg;
+
+            if (target.hp <= 0) {
+              target.isDead = true;
+              setCombatLog(log => [...log, `💀 ${target.name} has fallen to Charge.`].slice(-40));
+              if (run.livingSquad[target.id]) {
+                run.livingSquad[target.id].hp = 0;
+                triggerToast(`💀 ${target.name} has fallen!`, 'death');
+              }
+              if (!heroTypes.has(target.type)) {
+                const xpDropped = 25 + Math.round(Math.random() * 15) + run.currentBiome * 5;
+                addRunXp(xpDropped);
+                floatingTextsRef.current.push({
+                  text: `+${xpDropped} XP`,
+                  x: target.posX + 8,
+                  y: target.posY - 12,
+                  color: '#c084fc',
+                  life: 1.2
+                });
+              }
+            } else {
+              if (run.livingSquad[target.id]) {
+                run.livingSquad[target.id].hp = target.hp;
+              }
+            }
+          }
+          ent.chargeTargetId = undefined;
+          ent.chargeDamage = undefined;
+        }
+        continue;
       }
 
       // 2. Target Selection
@@ -1087,16 +1841,17 @@ export const CombatSimulation: React.FC = () => {
         const tileDist = dist / tileSize;
 
         // 3. Attack / Interaction Check
-        const effectiveRange = target.type === 'portal' ? 0.1 : (target.type === 'chest' || target.type === 'cage') ? 0.9 : ent.attackRange;
-        
-        // Prevent friendly fire: heroes must never attack other heroes
-        if (!isHostile && heroTypes.has(target.type)) {
-          target = null;
-          continue;
-        }
+        const isTeammate = !isHostile && heroTypes.has(target.type);
+        const effectiveRange = target.type === 'portal' 
+          ? 0.1 
+          : (target.type === 'chest' || target.type === 'cage') 
+            ? 0.9 
+            : isTeammate 
+              ? 1.5 
+              : ent.attackRange;
 
         if (tileDist <= effectiveRange) {
-          if (ent.attackCooldown <= 0) {
+          if (!isTeammate && ent.attackCooldown <= 0) {
             // Base attack cooldown per class
             const baseAtkCooldown = ent.type === 'ranger' ? 1.0 : ent.type === 'wizard' ? 1.8 : 1.2;
 
@@ -1123,12 +1878,22 @@ export const CombatSimulation: React.FC = () => {
             }
             const weaponAtkSpeed = Math.max(combinedAtkSpeed, 0.5);
 
+            // Sum attack cooldown reduction from all equipped items
+            let atkCdReduction = 0;
+            if (heroRec?.equipment) {
+              for (const key in heroRec.equipment) {
+                const item = heroRec.equipment[key as EquipmentSlot];
+                if (item?.stats?.atkCooldownReduction) atkCdReduction += item.stats.atkCooldownReduction;
+              }
+            }
+            atkCdReduction = Math.min(atkCdReduction, 0.40); // Cap at 40% CDR
+
             // Count stacks of Double Shot (diminishing returns, capped at 75% reduction)
             const doubleShotStacks = run.selectedPowerups?.filter(p => p === 'Double Shot').length ?? 0;
             const atkCooldownMult = ent.type === 'ranger'
               ? Math.max(0.25, Math.pow(0.70, doubleShotStacks))
               : 1.0;
-            ent.attackCooldown = (baseAtkCooldown / weaponAtkSpeed) * atkCooldownMult;
+            ent.attackCooldown = (baseAtkCooldown / weaponAtkSpeed) * atkCooldownMult * (1 - atkCdReduction);
 
             // Handle chest unlock / cage breaking
             if (target.type === 'chest' || target.type === 'cage') {
@@ -1191,11 +1956,18 @@ export const CombatSimulation: React.FC = () => {
             // Elixir of Wrath: +10% damage from purchased buff
             if (ent.tempBuffs?.includes('damage')) dmgMult += 0.10;
 
-            const isMitigated = target.type === 'warrior' && Math.random() < 0.25;
+            const blockChance = target.type === 'warrior' ? 0.25 + 0.07 * countOf('Block Mastery') : 0;
+            const isMitigated = Math.random() < blockChance;
             const rawDmg = Math.round(ent.damage * dmgMult);
             const dmg = isMitigated ? Math.round(rawDmg * 0.4) : rawDmg;
-            
-            target.hp = Math.max(target.hp - dmg, 0);
+
+            // Track damage dealt by heroes (on fire, before projectile travel)
+            if (!isHostile) {
+              if (!run.heroDamageDealt) {
+                run.heroDamageDealt = {};
+              }
+              run.heroDamageDealt[ent.id] = (run.heroDamageDealt[ent.id] || 0) + dmg;
+            }
 
             if (Math.random() < 0.35 || ent.type === 'boss') {
               setCombatLog(log => [
@@ -1206,49 +1978,177 @@ export const CombatSimulation: React.FC = () => {
               ].slice(-40));
             }
 
-            floatingTextsRef.current.push({
-              text: isMitigated ? `Blocked!` : `-${dmg}`,
-              x: target.posX,
-              y: target.posY - 8,
-              color: isMitigated ? '#60a5fa' : isHostile ? '#ef4444' : '#fbbf24',
-              life: 1.0
-            });
-
-            for (let k = 0; k < 6; k++) {
-              particlesRef.current.push({
-                x: target.posX,
-                y: target.posY,
-                vx: (Math.random() - 0.5) * 80,
-                vy: (Math.random() - 0.5) * 80,
-                color: isHostile ? '#ef4444' : '#fbbf24',
-                size: 2 + Math.random() * 2,
-                life: 0.4
+            // --- Ranged attack: spawn projectile (damage applied on impact) ---
+            const isRangedAttacker = ent.type === 'ranger' || ent.type === 'wizard' || ent.type === 'archer';
+            if (isRangedAttacker) {
+              const pColor = ent.type === 'ranger' ? '#1eff00' : ent.type === 'wizard' ? '#ff6a00' : '#ef4444';
+              const pSize = ent.type === 'wizard' ? 5 : 1.5;
+              const pSpeed = ent.type === 'wizard' ? 220 : 320;
+              projectilesRef.current.push({
+                x: ent.posX,
+                y: ent.posY,
+                startX: ent.posX,
+                startY: ent.posY,
+                attackerId: ent.id,
+                targetId: target.id,
+                speed: pSpeed,
+                damage: dmg,
+                isMitigated,
+                color: pColor,
+                size: pSize,
+                trail: [],
+                life: 2.0,
+                isAoE: ent.type === 'wizard',
+                isPoisoned: ent.type === 'ranger' && (run.selectedPowerups ?? []).includes('Poison Arrow'),
+                poisonLevel: ent.type === 'ranger' ? (run.selectedPowerups ?? []).filter(p => p === 'Poison Arrow').length : 0
               });
-            }
+            } else {
+              // --- Melee attack: apply damage instantly + slash VFX ---
+              target.hp = Math.max(target.hp - dmg, 0);
 
-            // --- Lifesteal: heal attacker based on lifeSteal % of damage dealt ---
-            if (!isHostile && ent.lifeSteal > 0) {
-              const healAmount = Math.round(dmg * ent.lifeSteal);
-              if (healAmount > 0) {
-                const oldHp = ent.hp;
-                ent.hp = Math.min(ent.hp + healAmount, ent.maxHp);
-                const actualHeal = ent.hp - oldHp;
-                if (actualHeal > 0) {
-                  // Sync to livingSquad
-                  if (run.livingSquad[ent.id]) {
-                    run.livingSquad[ent.id].hp = ent.hp;
+              floatingTextsRef.current.push({
+                text: isMitigated ? `Blocked!` : `-${dmg}`,
+                x: target.posX,
+                y: target.posY - 8,
+                color: isMitigated ? '#60a5fa' : isHostile ? '#ef4444' : '#fbbf24',
+                life: 1.0
+              });
+
+              for (let k = 0; k < 6; k++) {
+                particlesRef.current.push({
+                  x: target.posX,
+                  y: target.posY,
+                  vx: (Math.random() - 0.5) * 80,
+                  vy: (Math.random() - 0.5) * 80,
+                  color: isHostile ? '#ef4444' : '#fbbf24',
+                  size: 2 + Math.random() * 2,
+                  life: 0.4
+                });
+              }
+
+              // Warrior slash AoE damage to non-primary targets
+              if (ent.type === 'warrior') {
+                const slashRadius = 1.5 * tileSize;
+                entities.forEach(other => {
+                  if (other.id === target.id || other.isDead) return;
+
+                  const isTargetHero = heroTypes.has(target.type);
+                  const isOtherHero = heroTypes.has(other.type);
+                  if (isTargetHero !== isOtherHero) return;
+                  if (other.type === 'chest' || other.type === 'cage' || other.type === 'portal' || other.type === 'item_loot') return;
+
+                  const dx = other.posX - ent.posX;
+                  const dy = other.posY - ent.posY;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+
+                  if (dist <= slashRadius) {
+                    const secondaryDmg = Math.round(dmg * 0.15);
+                    if (secondaryDmg > 0) {
+                      other.hp = Math.max(other.hp - secondaryDmg, 0);
+
+                      floatingTextsRef.current.push({
+                        text: `-${secondaryDmg}`,
+                        x: other.posX,
+                        y: other.posY - 8,
+                        color: isHostile ? '#ef4444' : '#fbbf24',
+                        life: 1.0
+                      });
+
+                      for (let k = 0; k < 3; k++) {
+                        particlesRef.current.push({
+                          x: other.posX,
+                          y: other.posY,
+                          vx: (Math.random() - 0.5) * 50,
+                          vy: (Math.random() - 0.5) * 50,
+                          color: isHostile ? '#ef4444' : '#fbbf24',
+                          size: 1.5 + Math.random() * 1.5,
+                          life: 0.3
+                        });
+                      }
+
+                      // Track damage dealt by heroes
+                      if (!isHostile) {
+                        if (!run.heroDamageDealt) {
+                          run.heroDamageDealt = {};
+                        }
+                        run.heroDamageDealt[ent.id] = (run.heroDamageDealt[ent.id] || 0) + secondaryDmg;
+                      }
+
+                      if (other.hp <= 0) {
+                        other.isDead = true;
+                        setCombatLog(log => [...log, `💀 ${other.name} has fallen to splash damage.`].slice(-40));
+
+                        if (other.type === 'boss') {
+                          const item = generateRandomItem(run.currentBiome);
+                          item.rarity = 'Legendary';
+                          entitiesRef.current.push({
+                            id: `loot-${Date.now()}-${Math.random()}`,
+                            name: item.name,
+                            type: 'item_loot',
+                            gridX: other.gridX,
+                            gridY: other.gridY,
+                            posX: other.posX,
+                            posY: other.posY,
+                            hp: 1,
+                            maxHp: 1,
+                            speed: 2,
+                            attackRange: 0,
+                            attackCooldown: 0,
+                            damage: 0,
+                            lifeSteal: 0,
+                            tempBuffs: [],
+                            color: '#ff8000',
+                            isDead: false,
+                            lootItem: item,
+                            velX: (Math.random() - 0.5) * 10,
+                            velY: -5 - Math.random() * 8,
+                          });
+                        }
+                      }
+                    }
                   }
-                  floatingTextsRef.current.push({
-                    text: `+${actualHeal}`,
-                    x: ent.posX,
-                    y: ent.posY - 10,
-                    color: '#4ade80',
-                    life: 1.0
-                  });
+                });
+              }
+
+              // Warrior slash VFX
+              if (ent.type === 'warrior' || ent.type === 'paladin') {
+                const slashAngle = Math.atan2(target.posY - ent.posY, target.posX - ent.posX);
+                slashEffectsRef.current.push({
+                  x: ent.posX,
+                  y: ent.posY,
+                  angle: slashAngle,
+                  color: ent.type === 'warrior' ? '#0070dd' : '#fbbf24',
+                  life: 1.0,
+                  radius: ent.type === 'warrior' ? 48 : 26
+                });
+              }
+
+              // --- Lifesteal: heal attacker based on lifeSteal % of damage dealt ---
+              const vampBladeCountMelee = (run.selectedPowerups ?? []).filter(p => p === 'Vampiric Blade').length;
+              const effectiveLifeSteal = ent.lifeSteal + 0.03 * vampBladeCountMelee;
+              if (!isHostile && effectiveLifeSteal > 0) {
+                const healAmount = Math.round(dmg * effectiveLifeSteal);
+                if (healAmount > 0) {
+                  const oldHp = ent.hp;
+                  ent.hp = Math.min(ent.hp + healAmount, ent.maxHp);
+                  const actualHeal = ent.hp - oldHp;
+                  if (actualHeal > 0) {
+                    if (run.livingSquad[ent.id]) {
+                      run.livingSquad[ent.id].hp = ent.hp;
+                    }
+                    floatingTextsRef.current.push({
+                      text: `+${actualHeal}`,
+                      x: ent.posX,
+                      y: ent.posY - 10,
+                      color: '#4ade80',
+                      life: 1.0
+                    });
+                  }
                 }
               }
             }
 
+            // --- Death handling (shared by melee and projectile impact) ---
             if (target.hp <= 0) {
               target.isDead = true;
               setCombatLog(log => [...log, `💀 ${target!.name} has fallen.`].slice(-40));
@@ -1350,7 +2250,7 @@ export const CombatSimulation: React.FC = () => {
             const nextY = ent.posY + mdy * ent.speed * tileSize * dt;
             const nextGridX = Math.floor(nextX / tileSize);
             const nextGridY = Math.floor(nextY / tileSize);
-            if (grid[nextGridY]?.[nextGridX] !== 1) {
+            if (grid[nextGridY]?.[nextGridX] === 0) {
               ent.posX = nextX;
               ent.posY = nextY;
               ent.gridX = nextGridX;
@@ -1452,7 +2352,7 @@ export const CombatSimulation: React.FC = () => {
                 const nextGridX = Math.floor(nextX / tileSize);
                 const nextGridY = Math.floor(nextY / tileSize);
 
-                if (grid[nextGridY]?.[nextGridX] !== 1) {
+                if (grid[nextGridY]?.[nextGridX] === 0) {
                   ent.posX = nextX;
                   ent.posY = nextY;
                   ent.gridX = nextGridX;
@@ -1506,7 +2406,7 @@ export const CombatSimulation: React.FC = () => {
             const nextGridX = Math.floor(nextX / tileSize);
             const nextGridY = Math.floor(nextY / tileSize);
 
-            if (grid[nextGridY]?.[nextGridX] !== 1) {
+            if (grid[nextGridY]?.[nextGridX] === 0) {
               ent.posX = nextX;
               ent.posY = nextY;
               ent.gridX = nextGridX;
@@ -1515,13 +2415,13 @@ export const CombatSimulation: React.FC = () => {
               // Sliding logic: try moving along X or Y individually if diagonal/direct path is blocked by a wall
               const nextXOnly = ent.posX + (mdx / stepDist) * ent.speed * tileSize * dt;
               const nextGridXOnly = Math.floor(nextXOnly / tileSize);
-              if (grid[ent.gridY]?.[nextGridXOnly] !== 1) {
+              if (grid[ent.gridY]?.[nextGridXOnly] === 0) {
                 ent.posX = nextXOnly;
                 ent.gridX = nextGridXOnly;
               } else {
                 const nextYOnly = ent.posY + (mdy / stepDist) * ent.speed * tileSize * dt;
                 const nextGridYOnly = Math.floor(nextYOnly / tileSize);
-                if (grid[nextGridYOnly]?.[ent.gridX] !== 1) {
+                if (grid[nextGridYOnly]?.[ent.gridX] === 0) {
                   ent.posY = nextYOnly;
                   ent.gridY = nextGridYOnly;
                 }
@@ -1738,6 +2638,76 @@ export const CombatSimulation: React.FC = () => {
       ctx.fillText(ent.name.substring(0, 12), drawX, drawY - radius - 13);
     });
 
+    // Draw slash effects — sword swing trail arc
+    slashEffectsRef.current.forEach(s => {
+      const sx = s.x - camX;
+      const sy = s.y - camY;
+      const alpha = Math.max(0, s.life);
+      const sweep = Math.PI * 0.4;
+      const radius = s.radius ?? 26;
+
+      // Trailing glow arc (offset behind the blade)
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, s.angle - sweep / 2 - 0.2, s.angle + sweep / 2 - 0.2);
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = s.color;
+      ctx.globalAlpha = alpha * 0.25;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+
+      // Main blade trail arc
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, s.angle - sweep / 2, s.angle + sweep / 2);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    });
+
+    // Draw projectiles with trail
+    projectilesRef.current.forEach(proj => {
+      const px = proj.x - camX;
+      const py = proj.y - camY;
+      // Draw trail
+      for (let i = 0; i < proj.trail.length; i++) {
+        const t = proj.trail[i];
+        const tx = t.x - camX;
+        const ty = t.y - camY;
+        const trailAlpha = (i + 1) / (proj.trail.length + 1) * 0.5;
+        const trailSize = proj.size * ((i + 1) / (proj.trail.length + 1));
+        ctx.beginPath();
+        ctx.arc(tx, ty, trailSize, 0, 2 * Math.PI);
+        if (proj.isAoE) {
+          // Dynamic fire trail: transition from yellow-orange near head to deep red/orange at the end
+          const ratio = i / Math.max(1, proj.trail.length - 1);
+          ctx.fillStyle = ratio < 0.3 ? '#ef4444' : ratio < 0.7 ? '#ff6a00' : '#fbbf24';
+        } else {
+          ctx.fillStyle = proj.color;
+        }
+        ctx.globalAlpha = trailAlpha;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1.0;
+      // Draw projectile head with glow
+      ctx.beginPath();
+      ctx.arc(px, py, proj.size + 2, 0, 2 * Math.PI);
+      if (proj.isAoE) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; // Red/Orange fire glow
+      } else {
+        ctx.fillStyle = proj.color + '44';
+      }
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px, py, proj.size, 0, 2 * Math.PI);
+      if (proj.isAoE) {
+        ctx.fillStyle = '#ff6a00'; // Orange head
+      } else {
+        ctx.fillStyle = proj.color;
+      }
+      ctx.fill();
+    });
+
     // Draw particles with offset
     particlesRef.current.forEach(p => {
       ctx.beginPath();
@@ -1770,14 +2740,73 @@ export const CombatSimulation: React.FC = () => {
 
   const handleStartSimulation = () => {
     if (activeRun) {
-      entitiesRef.current.forEach(ent => {
-        const runStatus = activeRun.livingSquad[ent.id];
-        if (runStatus) {
-          ent.hp = runStatus.hp;
-          ent.maxHp = runStatus.maxHp;
-          ent.tempBuffs = runStatus.tempBuffs ?? [];
+      // Rebuild the squad entities so that any newly revived or updated squad members are correctly included and synced.
+      const nonSquadEntities = entitiesRef.current.filter(ent => !squad.includes(ent.id));
+      const squadEntities: SimulatedEntity[] = [];
+      const startX = 2;
+      const startY = 20;
+
+      squad.forEach((heroId, idx) => {
+        const hero = roster.find(h => h.character_id === heroId);
+        const runStatus = activeRun.livingSquad[heroId];
+        if (!hero || !runStatus || runStatus.hp <= 0) return;
+
+        const type = hero.class.toLowerCase() as any;
+        let combinedSpeed = hero.base_stats.speed_mult * (hero.class === 'RANGER' ? 1.2 : 0.9);
+
+        // Sum speed from all equipped items
+        if (hero.equipment) {
+          for (const key in hero.equipment) {
+            const item = hero.equipment[key as EquipmentSlot];
+            if (item?.stats?.speed) combinedSpeed *= (1 + item.stats.speed / 100);
+          }
         }
+
+        // Class base damage + flat weapon damage from equipped weapon
+        const classBaseDmg = hero.class === 'WARRIOR' ? 12 : hero.class === 'WIZARD' ? 16 : 9;
+        const weapon = hero.equipment['weapon'];
+        const weaponDmg = weapon?.stats?.damage ?? 0;
+
+        // Sum lifeSteal from all equipped items
+        let lifeSteal = 0;
+        if (hero.equipment) {
+          for (const key in hero.equipment) {
+            const item = hero.equipment[key as EquipmentSlot];
+            if (item?.stats?.lifeSteal) lifeSteal += item.stats.lifeSteal;
+          }
+        }
+        // Warrior passive: 2% life steal
+        if (hero.class === 'WARRIOR') {
+          lifeSteal += 0.02;
+        }
+        // Vampiric Blade powerup: +3% life steal per stack
+        const vampBladeCount = (activeRun.selectedPowerups ?? []).filter(p => p === 'Vampiric Blade').length;
+        if (vampBladeCount > 0) {
+          lifeSteal += 0.03 * vampBladeCount;
+        }
+
+        squadEntities.push({
+          id: heroId,
+          name: hero.class,
+          type,
+          gridX: startX,
+          gridY: startY + idx - 1,
+          posX: startX * tileSize + tileSize / 2,
+          posY: (startY + idx - 1) * tileSize + tileSize / 2,
+          hp: runStatus.hp,
+          maxHp: runStatus.maxHp,
+          speed: combinedSpeed * 1.5,
+          attackRange: hero.class === 'RANGER' ? 4 : hero.class === 'WIZARD' ? 3.5 : 1.2,
+          attackCooldown: 0,
+          damage: classBaseDmg + weaponDmg,
+          lifeSteal,
+          tempBuffs: runStatus.tempBuffs ?? [],
+          color: hero.class === 'WARRIOR' ? '#0070dd' : hero.class === 'WIZARD' ? '#a335ee' : '#1eff00',
+          isDead: false,
+        });
       });
+
+      entitiesRef.current = [...squadEntities, ...nonSquadEntities];
     }
     setRunStarted(true);
     setCombatLog(log => [...log, `Squad coordinates locked. Commencing exploration.`]);
@@ -1900,8 +2929,10 @@ export const CombatSimulation: React.FC = () => {
               >
                 <div className="fire-pit-glow" />
                 <img src={import.meta.env.BASE_URL + "campfire.png"} alt="Campfire" className="campfire-image-sprite animate-pulse" />
-                {healedHeroes.length > 0 && (
+                {healedHeroes.length > 0 ? (
                   <div className="campfire-rested-label">Rested</div>
+                ) : (
+                  <div className="campfire-instruction-label animate-pulse">Click Fire to Heal Party</div>
                 )}
               </div>
 
@@ -1935,7 +2966,7 @@ export const CombatSimulation: React.FC = () => {
                         className="camp-revive-btn"
                         onClick={() => setShowReviveModal(true)}
                       >
-                        Revive Ally
+                        Revive<br />Ally
                       </button>
                     )}
                   </div>
@@ -2080,7 +3111,7 @@ export const CombatSimulation: React.FC = () => {
                     const isDefense = powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron');
                     const isAttack = powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade');
                     const isMagic = powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike');
-                    const isHeal = powerup.includes('Rejuvenate');
+                    const isHeal = powerup.includes('Rejuvenate') || powerup.includes('Second Wind');
 
                     const baseDesc = powerupDescriptions[powerup] || 'Active team enhancement';
                     const tooltipText = count > 1 ? `${baseDesc} (${count}x total)` : baseDesc;

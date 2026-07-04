@@ -21,7 +21,10 @@ export const TownScene: React.FC = () => {
     assignHeroToSlot,
     gold,
     startRun,
-    returnToMainMenu
+    returnToMainMenu,
+    townTutorialStep,
+    advanceTownTutorial,
+    skipTownTutorial,
   } = useGame();
 
   const [activeDistrict, setActiveDistrict] = useState<'strategy' | 'blacksmith' | 'shop' | 'roster' | 'none'>('strategy');
@@ -45,7 +48,8 @@ export const TownScene: React.FC = () => {
     setMouseCoords(null);
   };
 
-  const maxSquadSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
+  const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
+  const maxSquadSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
 
   const activeHero = roster.find(h => h.character_id === activeHeroId) || null;
   const equippedItem = (activeHero && selectedSlot && activeHero.equipment) ? activeHero.equipment[selectedSlot] : null;
@@ -53,7 +57,7 @@ export const TownScene: React.FC = () => {
   // Combined stats calculator
   const getCombinedStats = (heroId: string) => {
     const hero = roster.find(h => h.character_id === heroId);
-    if (!hero) return { hp: 0, damage: 0, armor: 0, speed: 1, atkSpeed: 1, magic: 0 };
+    if (!hero) return { hp: 0, damage: 0, armor: 0, speed: 1, atkSpeed: 1, magic: 0, atkCdReduction: 0 };
 
     const classBaseDmg = hero.class === 'WARRIOR' ? 12 : hero.class === 'WIZARD' ? 16 : 9;
 
@@ -63,6 +67,7 @@ export const TownScene: React.FC = () => {
     let speed = 1.0;
     let atkSpeed = 1.0;
     let magic = 0;
+    let atkCdReduction = 0;
 
     if (hero.equipment) {
       for (const key in hero.equipment) {
@@ -73,6 +78,8 @@ export const TownScene: React.FC = () => {
           if (item.stats.armor) armor += item.stats.armor;
           if (item.stats.magic) magic += item.stats.magic;
           if (item.stats.atkSpeed) atkSpeed *= item.stats.atkSpeed;
+          if (item.stats.speed) speed *= (1 + item.stats.speed / 100);
+          if (item.stats.atkCooldownReduction) atkCdReduction += item.stats.atkCooldownReduction;
         }
       }
     }
@@ -98,7 +105,8 @@ export const TownScene: React.FC = () => {
       armor,
       speed: parseFloat((speed * hero.base_stats.speed_mult).toFixed(2)),
       atkSpeed: parseFloat((atkSpeed * hero.base_stats.atk_speed_mult).toFixed(2)),
-      magic
+      magic,
+      atkCdReduction: Math.min(parseFloat((atkCdReduction * 100).toFixed(1)), 40)
     };
   };
 
@@ -176,7 +184,7 @@ export const TownScene: React.FC = () => {
     return bagItemsForSlot.some(bagItem => getPowerScore(bagItem) > equippedScore);
   };
 
-  const handleEquipItem = (item: Item) => {
+  const handleEquipItem = (item: Item | null) => {
     if (!activeHeroId || !selectedSlot) return;
     equipItem(activeHeroId, selectedSlot, item);
   };
@@ -200,14 +208,41 @@ export const TownScene: React.FC = () => {
     setActiveHeroId(heroId);
   };
 
+  // Tutorial helpers
+  const isTutorialActive = townTutorialStep > 0 && townTutorialStep !== -1;
+
+  const handleShopBuildingClick = () => {
+    setActiveDistrict('shop');
+    // Gate: when tutorial is on step 2 (shop highlight), clicking the shop advances to step 3
+    if (townTutorialStep === 2) {
+      advanceTownTutorial(3);
+    }
+  };
+
+  const handleForgeBuildingClick = () => {
+    setActiveDistrict('blacksmith');
+    // Gate: when tutorial is on step 4 (forge building highlighted), clicking forge fires step 4 dialogue
+    if (townTutorialStep === 4) {
+      advanceTownTutorial(4);
+    }
+  };
+
+  const handleStrategyBuildingClick = () => {
+    setActiveDistrict('strategy');
+    // Gate: when tutorial is on step 5 (war table highlighted), clicking it fires step 5 dialogue
+    if (townTutorialStep === 5) {
+      advanceTownTutorial(5);
+    }
+  };
+
   return (
     <div className="town-scene-layout">
       {/* 1. Town District Interactive Building Headers */}
       <div className="town-buildings-row">
         {/* Shop Building */}
         <div 
-          onClick={() => setActiveDistrict('shop')}
-          className={`building-card building-purple ${activeDistrict === 'shop' ? 'active' : ''}`}
+          onClick={handleShopBuildingClick}
+          className={`building-card building-purple ${activeDistrict === 'shop' ? 'active' : ''} ${townTutorialStep === 2 ? 'tutorial-highlight' : ''}`}
         >
           <div className="building-stripe" />
           <div className="building-image-container">
@@ -220,8 +255,8 @@ export const TownScene: React.FC = () => {
 
         {/* Blacksmith Forge */}
         <div 
-          onClick={() => setActiveDistrict('blacksmith')}
-          className={`building-card building-red ${activeDistrict === 'blacksmith' ? 'active' : ''}`}
+          onClick={handleForgeBuildingClick}
+          className={`building-card building-red ${activeDistrict === 'blacksmith' ? 'active' : ''} ${townTutorialStep === 4 ? 'tutorial-highlight' : ''}`}
         >
           <div className="building-stripe" />
           <div className="building-image-container">
@@ -234,8 +269,8 @@ export const TownScene: React.FC = () => {
 
         {/* Strategy Table */}
         <div 
-          onClick={() => setActiveDistrict('strategy')}
-          className={`building-card building-gold ${activeDistrict === 'strategy' ? 'active' : ''}`}
+          onClick={handleStrategyBuildingClick}
+          className={`building-card building-gold ${activeDistrict === 'strategy' ? 'active' : ''} ${townTutorialStep === 5 ? 'tutorial-highlight' : ''}`}
         >
           <div className="building-stripe" />
           <div className="building-image-container">
@@ -272,6 +307,8 @@ export const TownScene: React.FC = () => {
                   {equippedItem.stats.damage && <div>+{equippedItem.stats.damage} Flat Damage</div>}
                   {equippedItem.stats.armor && <div>+{equippedItem.stats.armor} Armor Rating</div>}
                   {equippedItem.stats.atkSpeed && <div>+{Math.round((equippedItem.stats.atkSpeed - 1) * 100)}% Attack rate</div>}
+                  {equippedItem.stats.speed && <div>+{equippedItem.stats.speed}% Movement Speed</div>}
+                  {equippedItem.stats.atkCooldownReduction && <div>+{Math.round(equippedItem.stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction</div>}
                 </div>
 
                 {equippedItem.affixes.length > 0 && (
@@ -284,7 +321,16 @@ export const TownScene: React.FC = () => {
               </div>
 
               <div className="item-detail-footer">
-                Weight class: <span className="item-detail-weight-val">{equippedItem.weight}</span>
+                <span>Weight: <span className="item-detail-weight-val">{equippedItem.weight}</span></span>
+                <button
+                  className="item-detail-unequip-btn"
+                  onClick={() => {
+                    handleEquipItem(null);
+                    handleMouseLeaveItem();
+                  }}
+                >
+                  Unequip
+                </button>
               </div>
             </div>
           ) : (
@@ -313,7 +359,7 @@ export const TownScene: React.FC = () => {
         </div>
 
         {/* Center: Paperdoll character loadout & Inventory picker */}
-        <div className="paperdoll-column">
+        <div className={`paperdoll-column ${townTutorialStep === 1 ? 'tutorial-highlight' : ''}`}>
           <div className="paperdoll-board">
             {/* Faded Background Logo */}
             <div className="paperdoll-bg-logo" />
@@ -337,12 +383,12 @@ export const TownScene: React.FC = () => {
                   onClick={returnToMainMenu}
                   className="exit-btn-pronounced"
                 >
-                  Save & Exit
+                  Save &amp; Exit
                 </button>
                 <button 
                   disabled={squad.length === 0} 
                   onClick={startRun}
-                  className="deploy-btn-pronounced"
+                  className={`deploy-btn-pronounced ${townTutorialStep === 6 ? 'tutorial-highlight' : ''}`}
                 >
                   <Sword size={12} className="inline mr-1" /> Deploy Expedition
                 </button>
@@ -514,6 +560,14 @@ export const TownScene: React.FC = () => {
                             <span className="hero-stat-label">Magic Power</span>
                             <span className="hero-stat-value purple">
                               {stats.magic}
+                            </span>
+                          </div>
+                        )}
+                        {stats.atkCdReduction > 0 && (
+                          <div className="hero-stat-row">
+                            <span className="hero-stat-label">Attack CDR</span>
+                            <span className="hero-stat-value gold">
+                              +{stats.atkCdReduction}%
                             </span>
                           </div>
                         )}
@@ -734,6 +788,15 @@ export const TownScene: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Skip Tutorial button — bottom-right of squad panel */}
+        {isTutorialActive && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+            <button onClick={skipTownTutorial} className="tutorial-skip-btn">
+              Skip Tutorial
+            </button>
+          </div>
+        )}
       </div>
       {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
