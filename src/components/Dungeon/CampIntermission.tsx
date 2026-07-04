@@ -79,15 +79,15 @@ export const CampIntermission: React.FC = () => {
 
   const getAvatarPath = (heroClass: string) => {
     const pathMap: Record<string, string> = {
-      RANGER: '/ranger.png',
-      WARRIOR: '/warrior_chef.png',
-      WIZARD: '/sorceress.png',
-      ROGUE: '/ranger.png',
-      PALADIN: '/warrior.png',
-      DRUID: '/ranger.png',
-      NECROMANCER: '/wizard.png'
+      RANGER: 'ranger.png',
+      WARRIOR: 'warrior_chef.png',
+      WIZARD: 'sorceress.png',
+      ROGUE: 'ranger.png',
+      PALADIN: 'warrior.png',
+      DRUID: 'ranger.png',
+      NECROMANCER: 'wizard.png'
     };
-    return pathMap[heroClass] || '/ranger.png';
+    return pathMap[heroClass] || 'ranger.png';
   };
 
   return (
@@ -173,7 +173,7 @@ export const CampIntermission: React.FC = () => {
               style={{ cursor: healedHeroes.length > 0 ? 'default' : 'pointer' }}
             >
               <div className="fire-pit-glow" />
-              <img src="/campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
+              <img src="campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
               {healedHeroes.length > 0 && (
                 <div className="campfire-rested-label">Rested</div>
               )}

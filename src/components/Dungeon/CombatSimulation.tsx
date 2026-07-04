@@ -265,20 +265,20 @@ export const CombatSimulation: React.FC = () => {
 
   const getAvatarPath = (type: string) => {
     const pathMap: Record<string, string> = {
-      RANGER: '/ranger.png',
-      WARRIOR: '/warrior_chef.png',
-      WIZARD: '/sorceress.png',
-      ROGUE: '/ranger.png',
-      PALADIN: '/warrior.png',
-      DRUID: '/ranger.png',
-      NECROMANCER: '/wizard.png',
-      ENEMY: '/enemy_grunt.png',
-      ARCHER: '/enemy_archer.png',
-      ELITE: '/enemy_elite.png',
-      BOSS: '/enemy_boss.png',
-      CHEST: '/treasure_chest.png'
+      RANGER: 'ranger.png',
+      WARRIOR: 'warrior_chef.png',
+      WIZARD: 'sorceress.png',
+      ROGUE: 'ranger.png',
+      PALADIN: 'warrior.png',
+      DRUID: 'ranger.png',
+      NECROMANCER: 'wizard.png',
+      ENEMY: 'enemy_grunt.png',
+      ARCHER: 'enemy_archer.png',
+      ELITE: 'enemy_elite.png',
+      BOSS: 'enemy_boss.png',
+      CHEST: 'treasure_chest.png'
     };
-    return pathMap[type] || '/ranger.png';
+    return pathMap[type] || 'ranger.png';
   };
 
   // Preload actual images on mount
@@ -773,18 +773,18 @@ export const CombatSimulation: React.FC = () => {
         const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
         if (warriorUnlocked && questState.warriorSurvivedBoss) {
           enqueueDialogue([
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
-            { speaker: "Warrior Chef", portrait: "/warrior_chef.png", text: "Daughter! You're safe! Oh, thank the heavens. I thought I'd lost you to these dungeons forever!" },
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Father? You... you're fighting again? I thought you retired to serve stews." },
-            { speaker: "Warrior Chef", portrait: "/warrior_chef.png", text: "A dad's job is never done, sweetie! Especially when his daughter goes dungeon-crawling for garlic bread herbs." },
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Well... since you're here, I suppose I shall pledge my spells to this guild as well. Let us burn down what remains of these dungeons together." }
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
+            { speaker: "Warrior Chef", portrait: "warrior_chef.png", text: "Daughter! You're safe! Oh, thank the heavens. I thought I'd lost you to these dungeons forever!" },
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "Father? You... you're fighting again? I thought you retired to serve stews." },
+            { speaker: "Warrior Chef", portrait: "warrior_chef.png", text: "A dad's job is never done, sweetie! Especially when his daughter goes dungeon-crawling for garlic bread herbs." },
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "Well... since you're here, I suppose I shall pledge my spells to this guild as well. Let us burn down what remains of these dungeons together." }
           ]);
         } else {
           enqueueDialogue([
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
-            { speaker: "Sorceress", portrait: "/sorceress.png", text: "Now that you have shattered their control, I shall pledge my spells to your cause. Let us burn down what remains of these dungeons." }
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "Ah, the ones who vanquished the terror of the first biome..." },
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "I am a seeker of arcane mysteries, bound to these chambers by the boss's dark curse." },
+            { speaker: "Sorceress", portrait: "sorceress.png", text: "Now that you have shattered their control, I shall pledge my spells to your cause. Let us burn down what remains of these dungeons." }
           ]);
         }
         setCombatLog(log => [...log, `✨ The Sorceress has joined your guild!`]);
@@ -1877,7 +1877,7 @@ export const CombatSimulation: React.FC = () => {
                 style={{ cursor: healedHeroes.length > 0 ? 'default' : 'pointer' }}
               >
                 <div className="fire-pit-glow" />
-                <img src="/campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
+                <img src="campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
                 {healedHeroes.length > 0 && (
                   <div className="campfire-rested-label">Rested</div>
                 )}

@@ -104,15 +104,15 @@ export const TownScene: React.FC = () => {
 
   const getAvatarPath = (heroClass: string) => {
     const pathMap: Record<string, string> = {
-      RANGER: '/ranger.png',
-      WARRIOR: '/warrior_chef.png',
-      WIZARD: '/sorceress.png',
-      ROGUE: '/ranger.png',
-      PALADIN: '/warrior.png',
-      DRUID: '/ranger.png',
-      NECROMANCER: '/wizard.png'
+      RANGER: 'ranger.png',
+      WARRIOR: 'warrior_chef.png',
+      WIZARD: 'sorceress.png',
+      ROGUE: 'ranger.png',
+      PALADIN: 'warrior.png',
+      DRUID: 'ranger.png',
+      NECROMANCER: 'wizard.png'
     };
-    return pathMap[heroClass] || '/ranger.png';
+    return pathMap[heroClass] || 'ranger.png';
   };
 
   const getClassName = (heroClass: string) => {
@@ -210,7 +210,7 @@ export const TownScene: React.FC = () => {
         >
           <div className="building-stripe" />
           <div className="building-image-container">
-            <img src="/shop_stall.png" alt="Merchant Bazaar" className="building-img" />
+            <img src="shop_stall.png" alt="Merchant Bazaar" className="building-img" />
             <div className="building-overlay" />
             <span className="building-title title-purple">Merchant Shop</span>
           </div>
@@ -224,7 +224,7 @@ export const TownScene: React.FC = () => {
         >
           <div className="building-stripe" />
           <div className="building-image-container">
-            <img src="/blacksmith_forge.png" alt="Blacksmith Forge" className="building-img" />
+            <img src="blacksmith_forge.png" alt="Blacksmith Forge" className="building-img" />
             <div className="building-overlay" />
             <span className="building-title title-red">Blacksmith Forge</span>
           </div>
@@ -238,7 +238,7 @@ export const TownScene: React.FC = () => {
         >
           <div className="building-stripe" />
           <div className="building-image-container">
-            <img src="/war_table.png" alt="Strategy Table" className="building-img" />
+            <img src="war_table.png" alt="Strategy Table" className="building-img" />
             <div className="building-overlay" />
             <span className="building-title title-gold">Tactical War Table</span>
           </div>

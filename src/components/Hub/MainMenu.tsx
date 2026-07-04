@@ -32,15 +32,15 @@ export const MainMenu: React.FC = () => {
 
   const getHeroSprite = (heroClass: string) => {
     const spriteMap: Record<string, string> = {
-      RANGER: '/ranger.png',
-      WARRIOR: '/warrior_chef.png',
-      WIZARD: '/sorceress.png',
-      ROGUE: '/ranger.png',
-      PALADIN: '/warrior.png',
-      DRUID: '/ranger.png',
-      NECROMANCER: '/wizard.png'
+      RANGER: 'ranger.png',
+      WARRIOR: 'warrior_chef.png',
+      WIZARD: 'sorceress.png',
+      ROGUE: 'ranger.png',
+      PALADIN: 'warrior.png',
+      DRUID: 'ranger.png',
+      NECROMANCER: 'wizard.png'
     };
-    return spriteMap[heroClass] || '/ranger.png';
+    return spriteMap[heroClass] || 'ranger.png';
   };
 
 
@@ -60,7 +60,7 @@ export const MainMenu: React.FC = () => {
         {/* Top: Large Pulsing Medieval Game Title Logo */}
         {view === 'main' && (
           <div className="menu-header">
-            <img src="/game_title.png" alt="Guildmaster's Legacy" className="menu-title-logo animate-pulse-slow" />
+            <img src="game_title.png" alt="Guildmaster's Legacy" className="menu-title-logo animate-pulse-slow" />
           </div>
         )}
 
