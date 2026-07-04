@@ -681,7 +681,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   margin-left: 0;
   display: block;
   line-height: 1;
-  margin-top: 1px;
+  margin-top: 0px;
 }
 
 .hero-stats-title {
@@ -690,7 +690,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin: 0 0 8px 0;
+  margin: 0 0 0px 0;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(197, 168, 128, 0.25);
 }
@@ -705,7 +705,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 0;
+  padding: 0px 0;
   border-bottom: 1px solid rgba(197, 168, 128, 0.1);
 }
 
@@ -4693,5 +4693,178 @@ h1, h2, h3, h4, h5, .font-fantasy {
   color: #f0c040;
   border-color: #f0c040;
   background: rgba(240, 192, 64, 0.08);
+}
+
+/* ── Mobile Landscape ─────────────────────────────────────────────── */
+@media (orientation: landscape) and (max-height: 500px) {
+
+  /* Allow all scene layouts to scroll vertically */
+  .town-scene-layout,
+  .dungeon-scene-layout,
+  .camp-scene-layout {
+    height: calc(100vh - 8px);
+    overflow-y: auto;
+    gap: 6px;
+  }
+
+  /* Town Board: flexible columns instead of fixed px */
+  .town-board {
+    grid-template-columns: minmax(140px, 1fr) minmax(200px, 2.2fr) minmax(120px, 1fr);
+    gap: 6px;
+    height: auto;
+    min-height: 0;
+  }
+
+  .town-buildings-row {
+    gap: 6px;
+  }
+
+  .building-card {
+    padding: 4px;
+  }
+
+  .stats-panel-green {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  /* Hero stats panel narrower */
+  .hero-stats-panel {
+    flex: 0 0 130px;
+    width: 130px;
+    padding: 6px;
+  }
+
+  /* Squad section tighter */
+  .squad-slots-container {
+    gap: 12px;
+  }
+
+  /* Forge: shrink left column */
+  .forge-grid {
+    grid-template-columns: 200px 1fr;
+    gap: 8px;
+  }
+
+  /* Dungeon Board: shrink right sidebar */
+  .dungeon-board {
+    grid-template-columns: 1fr 240px;
+    gap: 8px;
+  }
+
+  .dungeon-header-section {
+    padding: 6px 10px;
+  }
+
+  .dungeon-combat-feed-panel {
+    height: auto;
+    max-height: 280px;
+  }
+
+  .dungeon-canvas-placeholder-card {
+    max-width: 280px;
+  }
+
+  /* Camp Board */
+  .camp-board {
+    gap: 8px;
+  }
+
+  .camp-header-section {
+    padding: 6px 10px;
+  }
+
+  /* Scale down campfire visual */
+  .campfire-fire-pit {
+    width: 200px;
+    height: 180px;
+  }
+
+  .campfire-character-spot {
+    width: 80px;
+  }
+
+  .character-hp-bubble {
+    width: 70px;
+  }
+
+  .camp-slot-card {
+    width: 36px;
+    height: 36px;
+  }
+
+  .character-sprite-card {
+    width: 64px;
+    height: 64px;
+  }
+
+  .wide-deploy {
+    width: 180px;
+  }
+
+  .camp-control-panel {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .camp-actions-row {
+    gap: 4px;
+  }
+
+  /* Summary / overlay adjustments */
+  .summary-board {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .summary-return-btn {
+    width: 180px;
+  }
+
+  .dialogue-portrait-container {
+    width: 160px;
+    height: 160px;
+  }
+
+  .dialogue-content-wrapper {
+    padding: 10px;
+  }
+
+  /* Main Menu save slots */
+  .save-slot-wrapper {
+    width: 160px;
+  }
+
+  .save-slot-card {
+    height: 220px;
+  }
+
+  .save-slots-grid {
+    gap: 20px;
+  }
+
+  .options-panel-scroll {
+    width: 280px;
+  }
+
+  /* Draft overlay */
+  .draft-board-container {
+    padding: 8px;
+    max-width: 100%;
+  }
+
+  /* Reduce global padding on panels */
+  .panel-title-green,
+  .panel-title-yellow,
+  .panel-title-red {
+    font-size: 0.8rem;
+    padding-bottom: 4px;
+  }
+
+  /* Shop adjustments */
+  .shop-restock-btn {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+  }
 }
 
