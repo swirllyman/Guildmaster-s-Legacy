@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useGame, generateRandomItem } from '../../context/GameContext';
-import type { EquipmentSlot, Item, DialogueLine } from '../../types/game';
+import type { EquipmentSlot, Item } from '../../types/game';
 import { 
   ShieldAlert, 
   AlertCircle, 
@@ -213,7 +213,7 @@ export const CombatSimulation: React.FC = () => {
   };
 
   const handleHealAll = () => {
-    if (healedHeroes.length > 0) return;
+    if (healedHeroes.length > 0 || !activeRun) return;
     campHealAllHeroes();
     const livingIds = Object.keys(activeRun.livingSquad).filter(
       id => activeRun.livingSquad[id].hp > 0
