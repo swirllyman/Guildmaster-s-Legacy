@@ -89,7 +89,12 @@ export const CampIntermission: React.FC = () => {
 
   const getSlotIcon = (slot: EquipmentSlot, isOccupied: boolean) => {
     const IconComponent = slotIcons[slot] || Shield;
-    return <IconComponent size={16} className={isOccupied ? 'text-amber-500' : 'text-gray-600'} />;
+    return (
+      <IconComponent 
+        size={16} 
+        style={{ color: isOccupied ? 'var(--accent-gold)' : '#2b303c' }} 
+      />
+    );
   };
 
   const getAvatarPath = (heroClass: string) => {

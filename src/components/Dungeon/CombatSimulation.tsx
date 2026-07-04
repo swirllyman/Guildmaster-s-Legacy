@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useGame, generateRandomItem } from '../../context/GameContext';
 import type { EquipmentSlot, Item } from '../../types/game';
+import { ItemTooltip } from '../Hub/ItemTooltip';
 import { 
   ShieldAlert, 
   AlertCircle, 
@@ -151,6 +152,20 @@ export const CombatSimulation: React.FC = () => {
   const [selectedBagItemId, setSelectedBagItemId] = useState<string | null>(null);
   const [showReviveModal, setShowReviveModal] = useState<boolean>(false);
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+    setMouseCoords(null);
+  };
 
   // Simulation parameters (Expanded to 40x40 Diablo-like dungeon!)
   const gridSize = 40;
@@ -210,7 +225,12 @@ export const CombatSimulation: React.FC = () => {
 
   const getSlotIcon = (slot: EquipmentSlot, isOccupied: boolean) => {
     const IconComponent = slotIcons[slot] || Shield;
-    return <IconComponent size={16} className={isOccupied ? 'text-amber-500' : 'text-gray-600'} />;
+    return (
+      <IconComponent 
+        size={16} 
+        style={{ color: isOccupied ? 'var(--accent-gold)' : '#2b303c' }} 
+      />
+    );
   };
 
   const handleHealAll = () => {
@@ -1934,8 +1954,12 @@ export const CombatSimulation: React.FC = () => {
                             onClick={() => {
                               if (isCorrectSlot) handleEquip(slot);
                             }}
+                            onMouseEnter={(e) => {
+                              if (item) handleMouseEnterItem(item, e);
+                            }}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeaveItem}
                             className={`camp-slot-card ${item ? 'occupied' : 'empty'} ${isCorrectSlot ? 'highlight-equip' : ''}`}
-                            title={item ? `${item.name} (${item.rarity})` : `Empty ${slot} slot`}
                           >
                             {getSlotIcon(slot, !!item)}
                             <span className="camp-slot-label">{slot}</span>
@@ -1962,6 +1986,9 @@ export const CombatSimulation: React.FC = () => {
                           <div
                             key={item.id}
                             onClick={() => setSelectedBagItemId(isSelected ? null : item.id)}
+                            onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeaveItem}
                             className={`camp-loot-card border-rarity-${item.rarity.toLowerCase()} ${isSelected ? 'active' : ''}`}
                           >
                             <div className="camp-loot-header">
@@ -2224,6 +2251,7 @@ export const CombatSimulation: React.FC = () => {
           </div>
         </div>
       )}
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };
