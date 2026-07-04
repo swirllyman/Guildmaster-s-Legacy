@@ -169,6 +169,7 @@ export const CombatSimulation: React.FC = () => {
   const fogMapRef = useRef<boolean[][]>([]); // Fog of war
   const lastUpdateRef = useRef<number>(0);
   const deathCameraRef = useRef<{ x: number; y: number } | null>(null);
+  const targetPosRef = useRef<{ x: number; y: number }>({ x: 36, y: 20 });
 
   // Synchronized refs to prevent loop restarts and stale closures
   const isPausedRef = useRef<boolean>(isPaused);
@@ -424,6 +425,7 @@ export const CombatSimulation: React.FC = () => {
       const path = findPath(startPos, targetPos);
       if (path.length > 0) {
         pathFound = true;
+        targetPosRef.current = targetPos;
       }
       attempts++;
     }
@@ -552,7 +554,8 @@ export const CombatSimulation: React.FC = () => {
         attempts++;
 
         const distToStart = Math.abs(gx - startPos.x) + Math.abs(gy - startPos.y);
-        if (grid[gy]?.[gx] !== 0 || distToStart <= 6) {
+        const distToExit = Math.abs(gx - targetPos.x) + Math.abs(gy - targetPos.y);
+        if (grid[gy]?.[gx] !== 0 || distToStart <= 6 || distToExit <= 7) {
           continue;
         }
 
@@ -796,12 +799,11 @@ export const CombatSimulation: React.FC = () => {
     const activePortal = hostiles.find(e => !e.isDead && e.type === 'portal');
     const primaryObjective = hostiles.find(e => !e.isDead && (e.type === 'chest' || e.type === 'cage' || e.type === 'boss' || e.type === 'portal'));
 
-    // Spawn an Exit Portal at objective coordinate once cleared
+    // Spawn an Exit Portal at targetPos once cleared
     // Block portal while boss dialogue is active so player reads it first
     if (!activeObjective && !activePortal && !activeDialogue) {
-      const deadObjective = entities.find(e => e.isDead && (e.type === 'boss' || e.type === 'chest' || e.type === 'cage'));
-      const tx = deadObjective ? deadObjective.gridX : 36;
-      const ty = deadObjective ? deadObjective.gridY : 20;
+      const tx = targetPosRef.current.x;
+      const ty = targetPosRef.current.y;
 
       entities.push({
         id: 'portal',

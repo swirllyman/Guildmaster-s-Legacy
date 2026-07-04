@@ -24,8 +24,10 @@ export const Blacksmith: React.FC = () => {
     craftRarity
   } = useGame();
 
-  const [selectedItemSource, setSelectedItemSource] = useState<'bag' | 'hero'>('bag');
-  const [selectedHeroId, setSelectedHeroId] = useState<string>('');
+  const firstUnlockedHero = roster.find(h => h.unlocked)?.character_id || '';
+
+  const [selectedItemSource, setSelectedItemSource] = useState<'bag' | 'hero'>('hero');
+  const [selectedHeroId, setSelectedHeroId] = useState<string>(firstUnlockedHero);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
@@ -67,7 +69,14 @@ export const Blacksmith: React.FC = () => {
   const items = getSelectableItems();
   const activeItem = items.find(i => i.id === selectedItemId) || null;
 
-  const getUpgradeCost = (_item: Item) => 50;
+  const getUpgradeLevel = (item: Item) => {
+    const match = item.name.match(/\+(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
+  const getUpgradeCost = (item: Item) => {
+    return 50 + getUpgradeLevel(item) * 25;
+  };
 
   const getRarityCraftCost = (item: Item) => {
     const costs: Record<Item['rarity'], number> = {

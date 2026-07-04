@@ -680,8 +680,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const item = getItemRef(itemId, location, heroId);
     if (!item) return;
 
-    // Upgrades cost gold. Let's make it flat 50 gold.
-    const cost = 50;
+    // Upgrades cost scales with the level (+25 gold per upgrade level)
+    const match = item.name.match(/\+(\d+)/);
+    const level = match ? parseInt(match[1], 10) : 0;
+    const cost = 50 + level * 25;
     if (gold < cost) return;
 
     const stats = { ...item.stats };

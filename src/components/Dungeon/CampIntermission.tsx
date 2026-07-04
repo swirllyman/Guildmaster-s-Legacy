@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import type { EquipmentSlot } from '../../types/game';
+import type { EquipmentSlot, Item } from '../../types/game';
+import { ItemTooltip } from '../Hub/ItemTooltip';
 import { 
   Flame, 
   Compass, 
@@ -38,6 +39,20 @@ export const CampIntermission: React.FC = () => {
   const [selectedBagItemId, setSelectedBagItemId] = useState<string | null>(null);
   const [showReviveModal, setShowReviveModal] = useState<boolean>(false);
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+    setMouseCoords(null);
+  };
 
   if (!activeRun) return null;
 
@@ -222,8 +237,12 @@ export const CampIntermission: React.FC = () => {
                           onClick={() => {
                             if (isCorrectSlot) handleEquip(slot);
                           }}
+                          onMouseEnter={(e) => {
+                            if (item) handleMouseEnterItem(item, e);
+                          }}
+                          onMouseMove={handleMouseMove}
+                          onMouseLeave={handleMouseLeaveItem}
                           className={`camp-slot-card ${item ? 'occupied' : 'empty'} ${isCorrectSlot ? 'highlight-equip' : ''}`}
-                          title={item ? `${item.name} (${item.rarity})` : `Empty ${slot} slot`}
                         >
                           {getSlotIcon(slot, !!item)}
                           <span className="camp-slot-label">{slot}</span>
@@ -250,6 +269,9 @@ export const CampIntermission: React.FC = () => {
                         <div
                           key={item.id}
                           onClick={() => setSelectedBagItemId(isSelected ? null : item.id)}
+                          onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                          onMouseMove={handleMouseMove}
+                          onMouseLeave={handleMouseLeaveItem}
                           className={`camp-loot-card border-rarity-${item.rarity.toLowerCase()} ${isSelected ? 'active' : ''}`}
                         >
                           <div className="camp-loot-header">
@@ -319,6 +341,7 @@ export const CampIntermission: React.FC = () => {
           </div>
         </div>
       )}
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };
