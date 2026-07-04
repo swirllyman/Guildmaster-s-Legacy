@@ -1307,17 +1307,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enqueueDialogue([
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "Guildmaster! You... you defeated the boss and saved my daughter! She returned safely to the tavern."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "I used to be a Frontline Shield-Bearer of the Iron Vanguard. I'm hanging up my chef apron and joining your barracks right now. My seasoned shield is at your service!"
           }
         ]);
@@ -1332,17 +1332,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enqueueDialogue([
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "Welcome back from the depths, Guildmaster! You look like you've been seasoned, tenderized, and lightly seared out there."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "By the way... my beloved daughter went missing in the forest biome. She went out to pick wild rosemary for our garlic bread stews, and she hasn't come back yet."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "If you could keep a look out while you're down there, that would be gr-ate... get it? Like a cheese grater? Sorry, bad dad joke. But seriously, please find her!"
           }
         ]);
@@ -1351,17 +1351,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enqueueDialogue([
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "You're back! Still no sign of my daughter? Oh, my stews are tasting like sadness and over-salted worry."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "I heard rumors from other adventurers that the monsters have locked cages deep within the ruins. I pray she's holding on."
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "Please, check the cages in the dungeon ruins! I'll keep the stoves warm for you."
           }
         ]);
@@ -1372,17 +1372,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enqueueDialogue([
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "I'm really worried about my daughter, mind if I join you? If you think my cooking skills are good, just wait till you see what I can do in battle!"
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "Before I retired to run this tavern, I was a Frontline WARRIOR of the Iron Vanguard. My shield is seasoned and ready to serve!"
           },
           {
             speaker: "Town Chef",
-            portrait: "warrior_chef.png",
+            portrait: import.meta.env.BASE_URL + "warrior_chef.png",
             text: "Let's go crack some monster skulls like eggs for a morning omelet! Let's get cooking!"
           }
         ]);

@@ -24,7 +24,8 @@ const getAvatarPath = (heroClass: string) => {
     DRUID: 'ranger.png',
     NECROMANCER: 'wizard.png'
   };
-  return pathMap[heroClass] || 'ranger.png';
+  const path = pathMap[heroClass] || 'ranger.png';
+  return import.meta.env.BASE_URL + path;
 };
 
 const getClassName = (heroClass: string) => {

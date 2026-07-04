@@ -40,7 +40,8 @@ export const MainMenu: React.FC = () => {
       DRUID: 'ranger.png',
       NECROMANCER: 'wizard.png'
     };
-    return spriteMap[heroClass] || 'ranger.png';
+    const path = spriteMap[heroClass] || 'ranger.png';
+    return import.meta.env.BASE_URL + path;
   };
 
 
@@ -60,7 +61,7 @@ export const MainMenu: React.FC = () => {
         {/* Top: Large Pulsing Medieval Game Title Logo */}
         {view === 'main' && (
           <div className="menu-header">
-            <img src="game_title.png" alt="Guildmaster's Legacy" className="menu-title-logo animate-pulse-slow" />
+            <img src={import.meta.env.BASE_URL + "game_title.png"} alt="Guildmaster's Legacy" className="menu-title-logo animate-pulse-slow" />
           </div>
         )}
 

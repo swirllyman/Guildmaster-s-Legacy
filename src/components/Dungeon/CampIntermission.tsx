@@ -87,7 +87,8 @@ export const CampIntermission: React.FC = () => {
       DRUID: 'ranger.png',
       NECROMANCER: 'wizard.png'
     };
-    return pathMap[heroClass] || 'ranger.png';
+    const path = pathMap[heroClass] || 'ranger.png';
+    return import.meta.env.BASE_URL + path;
   };
 
   return (
@@ -173,7 +174,7 @@ export const CampIntermission: React.FC = () => {
               style={{ cursor: healedHeroes.length > 0 ? 'default' : 'pointer' }}
             >
               <div className="fire-pit-glow" />
-              <img src="campfire.png" alt="Campfire" className="campfire-image-sprite animate-pulse" />
+              <img src={import.meta.env.BASE_URL + "campfire.png"} alt="Campfire" className="campfire-image-sprite animate-pulse" />
               {healedHeroes.length > 0 && (
                 <div className="campfire-rested-label">Rested</div>
               )}
