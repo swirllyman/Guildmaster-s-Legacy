@@ -12,9 +12,14 @@ import './App.css';
 const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [scale, setScale] = useState(1);
   const [isPortrait, setIsPortrait] = useState(false);
+  const [useZoom, setUseZoom] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Check if CSS zoom is supported (WebKit/Blink browsers like Chrome/Safari/mobile browsers)
+    const isZoomSupported = typeof (document.documentElement.style as any).zoom !== 'undefined';
+    setUseZoom(isZoomSupported);
+
     const handleResize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
@@ -83,16 +88,25 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
       <div
         ref={containerRef}
         className="game-scale-content"
-        style={{
-          width: '1600px',
-          height: '900px',
-          transform: `scale(${scale}) translateZ(0)`,
-          transformOrigin: 'center center',
-          flexShrink: 0,
-          willChange: 'transform',
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
-        }}
+        style={
+          (useZoom ? {
+            width: '1600px',
+            height: '900px',
+            zoom: scale,
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          } : {
+            width: '1600px',
+            height: '900px',
+            transform: `scale(${scale}) translateZ(0)`,
+            transformOrigin: 'center center',
+            flexShrink: 0,
+            willChange: 'transform',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+          }) as React.CSSProperties
+        }
       >
         {children}
       </div>
