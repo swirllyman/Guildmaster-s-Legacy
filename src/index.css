@@ -33,13 +33,18 @@
   --accent-purple: #4a154b;
 }
 
-body {
+html, body {
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0b0c10;
+}
+
+body {
   background: radial-gradient(circle at center, #1b1512 0%, #050508 100%);
   background-attachment: fixed;
-  overflow-x: hidden;
 }
 
 h1, h2, h3, h4, h5, .font-fantasy {
@@ -5000,7 +5005,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   user-select: none;
 }
 
