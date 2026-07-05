@@ -19,6 +19,7 @@ export const TownScene: React.FC = () => {
     setHeroTemperament,
     equipItem,
     assignHeroToSlot,
+    sellItem,
     gold,
     startRun,
     returnToMainMenu,
@@ -395,14 +396,16 @@ export const TownScene: React.FC = () => {
               </div>
             </div>
 
-            <h3 className="paperdoll-header">
-              Armor loadout: {activeHero ? getClassName(activeHero.class) : 'Ranger'}
-            </h3>
-
             {/* Equipment Loadout + Stats Panel */}
             <div className="loadout-and-stats-row">
-              {/* Symmetric Body Equipment Slots Layout */}
-              <div className="paperdoll-columns-container">
+              {/* Left Side: Title + Slots */}
+              <div className="paperdoll-left-side">
+                <h3 className="paperdoll-header">
+                  Loadout: {activeHero ? getClassName(activeHero.class) : 'Ranger'}
+                </h3>
+
+                {/* Symmetric Body Equipment Slots Layout */}
+                <div className="paperdoll-columns-container">
                 {/* Left Column: Shoulders & Gloves */}
                 <div className="paperdoll-side-column">
                   <div 
@@ -502,6 +505,7 @@ export const TownScene: React.FC = () => {
                 </div>
 
               </div>
+            </div>
 
               {/* Hero Stats Panel */}
               {activeHero && (
@@ -727,76 +731,121 @@ export const TownScene: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Squad Display Center-Bottom with Buttons [2] [1] [3] */}
-      <div className="squad-display-panel">
-        <h3 className="squad-display-title">Active Squad Formation</h3>
+      {/* 3. Bottom Row: Squad Formation + Inventory */}
+      <div className="bottom-split-row">
+        {/* Left: Squad Formation */}
+        <div className="squad-display-panel">
+          <h3 className="squad-display-title">Active Squad Formation</h3>
 
-        <div className="squad-slots-container">
-          {/* Ordered 2, 1, 3 in layout view */}
-          {[1, 0, 2].map(slotIdx => {
-            const squadHeroId = squad[slotIdx];
-            const hero = roster.find(h => h.character_id === squadHeroId);
-            const isLocked = slotIdx >= maxSquadSlots;
-            const isSelected = selectedSquadSlot === slotIdx;
+          <div className="squad-slots-container">
+            {/* Ordered 2, 1, 3 in layout view */}
+            {[1, 0, 2].map(slotIdx => {
+              const squadHeroId = squad[slotIdx];
+              const hero = roster.find(h => h.character_id === squadHeroId);
+              const isLocked = slotIdx >= maxSquadSlots;
+              const isSelected = selectedSquadSlot === slotIdx;
 
-            if (isLocked) {
-              return (
-                <div key={slotIdx} className="squad-slot-wrapper locked">
-                  <div className="squad-avatar-placeholder">
-                    <span className="lock-icon">Locked</span>
+              if (isLocked) {
+                return (
+                  <div key={slotIdx} className="squad-slot-wrapper locked">
+                    <div className="squad-avatar-placeholder">
+                      <span className="lock-icon">Locked</span>
+                    </div>
+                    <button disabled className="squad-num-btn locked">
+                      {slotIdx + 1}
+                    </button>
                   </div>
-                  <button disabled className="squad-num-btn locked">
+                );
+              }
+
+              return (
+                <div key={slotIdx} className="squad-slot-wrapper">
+                  <div className="squad-avatar-relative">
+                    {hero ? (
+                      <div 
+                        onClick={() => handleSquadSlotClick(slotIdx)}
+                        className={`squad-avatar-card ${isSelected ? 'active' : ''}`}
+                      >
+                        <img 
+                          src={getAvatarPath(hero.class)} 
+                          alt={hero.class} 
+                          className="squad-avatar-img" 
+                        />
+                        <div className="squad-avatar-overlay" />
+                        <span className="squad-avatar-label">{getClassName(hero.class)}</span>
+                      </div>
+                    ) : (
+                      <div 
+                        onClick={() => handleSquadSlotClick(slotIdx)}
+                        className={`squad-avatar-empty ${isSelected ? 'active' : ''}`}
+                      >
+                        <span>Empty Slot</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button 
+                    onClick={() => handleSquadSlotClick(slotIdx)}
+                    className={`squad-num-btn ${isSelected ? 'active' : ''}`}
+                  >
                     {slotIdx + 1}
                   </button>
                 </div>
               );
-            }
+            })}
+          </div>
 
-            return (
-              <div key={slotIdx} className="squad-slot-wrapper">
-                <div className="squad-avatar-relative">
-                  {hero ? (
-                    <div 
-                      onClick={() => handleSquadSlotClick(slotIdx)}
-                      className={`squad-avatar-card ${isSelected ? 'active' : ''}`}
-                    >
-                      <img 
-                        src={getAvatarPath(hero.class)} 
-                        alt={hero.class} 
-                        className="squad-avatar-img" 
-                      />
-                      <div className="squad-avatar-overlay" />
-                      <span className="squad-avatar-label">{getClassName(hero.class)}</span>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => handleSquadSlotClick(slotIdx)}
-                      className={`squad-avatar-empty ${isSelected ? 'active' : ''}`}
-                    >
-                      <span>Empty Slot</span>
-                    </div>
-                  )}
-                </div>
-
-                <button 
-                  onClick={() => handleSquadSlotClick(slotIdx)}
-                  className={`squad-num-btn ${isSelected ? 'active' : ''}`}
-                >
-                  {slotIdx + 1}
-                </button>
-              </div>
-            );
-          })}
+          {isTutorialActive && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+              <button onClick={skipTownTutorial} className="tutorial-skip-btn">
+                Skip Tutorial
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Skip Tutorial button — bottom-right of squad panel */}
-        {isTutorialActive && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-            <button onClick={skipTownTutorial} className="tutorial-skip-btn">
-              Skip Tutorial
-            </button>
+        {/* Right: Inventory */}
+        <div className="inventory-panel">
+          <h3 className="inventory-panel-title">
+            Inventory ({sharedBag.items.length}/{sharedBag.max_slots})
+          </h3>
+          <div className="inventory-items-list">
+            {sharedBag.items.length === 0 && (
+              <div className="inventory-empty">No items</div>
+            )}
+            {sharedBag.items.map(item => {
+              const rarityColor: Record<string, string> = {
+                Legendary: '#ff8000',
+                Epic: '#a335ee',
+                Rare: '#0070dd',
+                Uncommon: '#1eff00',
+                Common: '#ffffff',
+              };
+              const sellPrices: Record<string, number> = {
+                Common: 12, Uncommon: 25, Rare: 75, Epic: 200, Legendary: 400,
+              };
+              return (
+                <div
+                  key={item.id}
+                  className="inventory-item-row"
+                  onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                  onMouseLeave={handleMouseLeaveItem}
+                >
+                  <span className="inventory-item-name" style={{ color: rarityColor[item.rarity] ?? '#fff' }}>
+                    {item.name}
+                  </span>
+                  <span className="inventory-item-type">{item.type}</span>
+                  <button
+                    className="inventory-sell-btn"
+                    onClick={() => sellItem(item.id)}
+                  >
+                    Sell ({sellPrices[item.rarity] ?? 12}g)
+                  </button>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
       </div>
       {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>

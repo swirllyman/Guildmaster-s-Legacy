@@ -182,7 +182,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
 .town-scene-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 16px);
+  height: 100%;
   box-sizing: border-box;
   gap: 10px;
   max-width: 1400px;
@@ -195,6 +195,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .building-card {
@@ -469,9 +470,8 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: 1;
+  flex: 0 0 350px;
   overflow: hidden;
-  min-height: 0;
 }
 
 /* Faded Background Logo */
@@ -597,7 +597,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
 .paperdoll-header {
   font-size: 0.8rem;
   color: var(--accent-gold);
-  margin: 6px 0 0 0;
+  margin: 0;
   text-transform: uppercase;
   font-weight: 500;
   z-index: 1;
@@ -606,12 +606,20 @@ h1, h2, h3, h4, h5, .font-fantasy {
 /* Loadout + Stats side-by-side */
 .loadout-and-stats-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 16px;
   width: 100%;
   margin-top: 10px;
   z-index: 1;
+}
+
+.paperdoll-left-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 /* Symmetric Columns Layout */
@@ -805,7 +813,8 @@ h1, h2, h3, h4, h5, .font-fantasy {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  height: 180px;
+  flex: 1;
+  min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -815,7 +824,8 @@ h1, h2, h3, h4, h5, .font-fantasy {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-  max-height: 130px;
+  flex: 1;
+  min-height: 0;
   padding-right: 4px;
 }
 
@@ -1176,14 +1186,115 @@ h1, h2, h3, h4, h5, .font-fantasy {
 }
 
 /* Center Bottom Squad Display */
+.bottom-split-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.bottom-split-row > .squad-display-panel {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.inventory-panel {
+  flex: 1;
+  background: rgba(5, 6, 8, 0.85);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  max-height: 160px;
+}
+
+.inventory-panel-title {
+  font-family: 'Almendra', serif;
+  font-size: 0.82rem;
+  color: var(--accent-gold);
+  width: 100%;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
+  margin: 0;
+}
+
+.inventory-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.inventory-empty {
+  text-align: center;
+  color: #666;
+  font-size: 0.75rem;
+  padding: 12px 0;
+  font-style: italic;
+}
+
+.inventory-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.inventory-item-row:hover {
+  border-color: var(--border-color);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.inventory-item-name {
+  flex: 1;
+  font-size: 0.72rem;
+  font-family: 'Almendra', serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.inventory-item-type {
+  font-size: 0.65rem;
+  color: #888;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.inventory-sell-btn {
+  font-size: 0.65rem;
+  font-family: 'Almendra', serif;
+  background: rgba(158, 42, 43, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(158, 42, 43, 0.4);
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.inventory-sell-btn:hover {
+  background: rgba(158, 42, 43, 0.4);
+  border-color: #ef4444;
+}
+
 .squad-display-panel {
   background: rgba(5, 6, 8, 0.85);
   border: 1px solid var(--border-color);
-  border-bottom: none;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-radius: 8px;
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
@@ -2021,7 +2132,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
 .dungeon-scene-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 32px);
+  height: 100%;
   box-sizing: border-box;
   gap: 12px;
   max-width: 1400px;
@@ -2038,6 +2149,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  flex-shrink: 0;
 }
 
 .dungeon-header-left {
@@ -2258,7 +2370,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
 .camp-scene-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 16px);
+  height: 100%;
   box-sizing: border-box;
   gap: 12px;
   max-width: 1400px;
@@ -3673,11 +3785,11 @@ h1, h2, h3, h4, h5, .font-fantasy {
    ========================================================================== */
 
 .main-menu-container {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -4143,11 +4255,11 @@ h1, h2, h3, h4, h5, .font-fantasy {
 
 /* Modals styling */
 .menu-modal-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   z-index: 10500;
   background: rgba(0,0,0,0.85);
   display: flex;
@@ -4418,7 +4530,7 @@ h1, h2, h3, h4, h5, .font-fantasy {
   flex-direction: column;
   justify-content: flex-end;
   align-items: center;
-  padding-bottom: 60px;
+  padding-bottom: 220px;
   cursor: pointer;
   user-select: none;
 }
@@ -4715,6 +4827,15 @@ h1, h2, h3, h4, h5, .font-fantasy {
     min-height: 0;
   }
 
+  .bottom-split-row {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .inventory-panel {
+    max-height: 120px;
+  }
+
   .town-buildings-row {
     gap: 6px;
   }
@@ -4865,6 +4986,106 @@ h1, h2, h3, h4, h5, .font-fantasy {
   .shop-restock-btn {
     padding: 3px 8px;
     font-size: 0.75rem;
+  }
+}
+
+/* ── Game Scale & Aspect Ratio Locking ───────────────────────────── */
+.game-scale-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #030406;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.game-scale-content {
+  background: radial-gradient(circle at center, #1b1512 0%, #050508 100%);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Landscape Orientation Warning ──────────────────────────────── */
+.orientation-warning-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at center, #1b1512 0%, #050508 100%);
+  z-index: 1000000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  box-sizing: border-box;
+  color: #e2e8f0;
+  font-family: 'Outfit', sans-serif;
+}
+
+.warning-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 450px;
+}
+
+.warning-icon-wrapper {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  background: rgba(197, 168, 128, 0.05);
+  border: 2px solid var(--accent-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(197, 168, 128, 0.2);
+}
+
+.warning-title {
+  font-family: 'Almendra', serif;
+  font-size: 1.8rem;
+  color: var(--accent-gold);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.warning-desc {
+  font-size: 0.95rem;
+  color: #a0aec0;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.btn-lock-orientation {
+  margin-top: 12px;
+  font-size: 0.95rem;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

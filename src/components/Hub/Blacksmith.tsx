@@ -80,10 +80,10 @@ export const Blacksmith: React.FC = () => {
 
   const getRarityCraftCost = (item: Item) => {
     const costs: Record<Item['rarity'], number> = {
-      Common: 40,
-      Uncommon: 80,
-      Rare: 160,
-      Epic: 300,
+      Common: 50,
+      Uncommon: 150,
+      Rare: 400,
+      Epic: 800,
       Legendary: 9999
     };
     return costs[item.rarity];

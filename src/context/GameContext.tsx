@@ -14,11 +14,21 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
   if (forceRarity) {
     rarity = forceRarity;
   } else {
+    // Biome-scaled rarity luck: higher biomes = better odds at rare drops
+    const biomeLevel = Math.max(1, Math.min(5, level || 1));
+    const rarityThresholds: Record<number, { common: number; uncommon: number; rare: number; epic: number }> = {
+      1: { common: 50, uncommon: 80, rare: 95, epic: 99 },   // Biome 1: 1% Legendary, 4% Epic, 15% Rare
+      2: { common: 40, uncommon: 70, rare: 88, epic: 96 },   // Biome 2: 4% Legendary, 8% Epic, 18% Rare
+      3: { common: 30, uncommon: 60, rare: 80, epic: 93 },   // Biome 3: 7% Legendary, 13% Epic, 20% Rare
+      4: { common: 20, uncommon: 50, rare: 75, epic: 90 },   // Biome 4: 10% Legendary, 15% Epic, 25% Rare
+      5: { common: 15, uncommon: 45, rare: 70, epic: 88 },   // Biome 5: 12% Legendary, 18% Epic, 25% Rare
+    };
+    const t = rarityThresholds[biomeLevel];
     const roll = Math.random() * 100;
-    if (roll > 95) rarity = 'Legendary';
-    else if (roll > 80) rarity = 'Epic';
-    else if (roll > 60) rarity = 'Rare';
-    else if (roll > 30) rarity = 'Uncommon';
+    if (roll > t.epic) rarity = 'Legendary';
+    else if (roll > t.rare) rarity = 'Epic';
+    else if (roll > t.uncommon) rarity = 'Rare';
+    else if (roll > t.common) rarity = 'Uncommon';
   }
 
   const suffixes: Record<Item['rarity'], string[]> = {
@@ -82,10 +92,6 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
     stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
     affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
   }
-  if (rarity === 'Epic' || rarity === 'Legendary') {
-    stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
-    affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
-  }
   if (rarity === 'Legendary') {
     stats.magic = Math.round(15 + Math.random() * 15);
     affixes.push(`+${stats.magic} Magic Power (Signature Trait)`);
@@ -132,6 +138,7 @@ interface GameContextProps {
   restockShop: (free?: boolean) => void;
   buyConsumableBuff: (buffType: 'hp' | 'damage' | 'speed') => void;
   buyScrollOfResurrection: () => void;
+  sellItem: (itemId: string) => void;
   
   // Run Lifecycle
   startRun: () => void;
@@ -824,10 +831,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Gold and material cost. Let's make it gold only for simplicity, scaling by rarity.
     const costs: Record<Item['rarity'], number> = {
-      Common: 40,      // Common -> Uncommon
-      Uncommon: 80,    // Uncommon -> Rare
-      Rare: 160,       // Rare -> Epic
-      Epic: 300,       // Epic -> Legendary
+      Common: 50,      // Common -> Uncommon
+      Uncommon: 150,   // Uncommon -> Rare
+      Rare: 400,       // Rare -> Epic
+      Epic: 800,       // Epic -> Legendary
       Legendary: 9999
     };
     
@@ -866,7 +873,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const item = shopInventory[index];
     if (!item) return;
     
-    const cost = item.rarity === 'Legendary' ? 400 : item.rarity === 'Epic' ? 200 : item.rarity === 'Rare' ? 100 : item.rarity === 'Uncommon' ? 50 : 25;
+    const cost = item.rarity === 'Legendary' ? 800 : item.rarity === 'Epic' ? 400 : item.rarity === 'Rare' ? 150 : item.rarity === 'Uncommon' ? 50 : 25;
     if (gold < cost) return;
 
     // Handle consumables via their dedicated systems
@@ -897,6 +904,24 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     });
     setShopInventory(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const sellItem = (itemId: string) => {
+    const item = sharedBag.items.find(i => i.id === itemId);
+    if (!item) return;
+    const sellPrices: Record<string, number> = {
+      Common: 12,
+      Uncommon: 25,
+      Rare: 75,
+      Epic: 200,
+      Legendary: 400,
+    };
+    const sellPrice = sellPrices[item.rarity] ?? 12;
+    setGold(g => g + sellPrice);
+    setSharedBag(bag => {
+      const updated = bag.items.filter(i => i.id !== itemId);
+      return { ...bag, items: updated, slots_used: updated.length };
+    });
   };
 
   const restockShop = (free = false) => {
@@ -1740,6 +1765,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       restockShop,
       buyConsumableBuff,
       buyScrollOfResurrection,
+      sellItem,
       
       startRun,
       advanceChamber,

@@ -66,9 +66,9 @@ export const Shop: React.FC = () => {
     const costs: Record<string, number> = {
       Common: 25,
       Uncommon: 50,
-      Rare: 100,
-      Epic: 200,
-      Legendary: 400
+      Rare: 150,
+      Epic: 400,
+      Legendary: 800
     };
     return costs[item.rarity] || 25;
   };
