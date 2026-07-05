@@ -11,15 +11,11 @@ import './App.css';
 
 const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [scale, setScale] = useState(1);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isPortrait, setIsPortrait] = useState(false);
-  const [useZoom, setUseZoom] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Check if CSS zoom is supported (WebKit/Blink browsers like Chrome/Safari/mobile browsers)
-    const isZoomSupported = typeof (document.documentElement.style as any).zoom !== 'undefined';
-    setUseZoom(isZoomSupported);
-
     const handleResize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
@@ -36,6 +32,7 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
       const newScale = Math.min(scaleX, scaleY);
 
       setScale(newScale);
+      setDimensions({ width: w, height: h });
     };
 
     window.addEventListener('resize', handleResize);
@@ -83,30 +80,29 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
     );
   }
 
+  const left = Math.max(0, Math.floor((dimensions.width - 1600 * scale) / 2));
+  const top = Math.max(0, Math.floor((dimensions.height - 900 * scale) / 2));
+
   return (
     <div className="game-scale-wrapper">
       <div
         ref={containerRef}
         className="game-scale-content"
-        style={
-          (useZoom ? {
-            width: '1600px',
-            height: '900px',
-            zoom: scale,
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-          } : {
-            width: '1600px',
-            height: '900px',
-            transform: `scale(${scale}) translateZ(0)`,
-            transformOrigin: 'center center',
-            flexShrink: 0,
-            willChange: 'transform',
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-          }) as React.CSSProperties
-        }
+        style={{
+          position: 'absolute',
+          left: `${left}px`,
+          top: `${top}px`,
+          width: '1600px',
+          height: '900px',
+          transform: `scale(${scale}) translateZ(0)`,
+          transformOrigin: '0 0',
+          willChange: 'transform',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          flexShrink: 0,
+        }}
       >
         {children}
       </div>
