@@ -86,9 +86,12 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
         style={{
           width: '1600px',
           height: '900px',
-          transform: `scale(${scale})`,
+          transform: `scale(${scale}) translateZ(0)`,
           transformOrigin: 'center center',
           flexShrink: 0,
+          willChange: 'transform',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
         }}
       >
         {children}
