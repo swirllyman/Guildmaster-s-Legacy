@@ -292,15 +292,23 @@ export const Blacksmith: React.FC = () => {
                 <div className="forge-action-card">
                   <div className="forge-action-card-header">
                     <span className="forge-action-title">Stat Upgrade (+1)</span>
-                    <span className="forge-action-cost">{getUpgradeCost(activeItem)}g</span>
+                    {activeItem.rarity !== 'Legendary' ? (
+                      <span className="forge-action-cost">{getUpgradeCost(activeItem)}g</span>
+                    ) : (
+                      <span className="forge-action-max">LOCKED</span>
+                    )}
                   </div>
-                  <p className="forge-action-desc">Flatly boosts primary health, weapon damage, or armor ratings.</p>
+                  <p className="forge-action-desc">
+                    {activeItem.rarity === 'Legendary' 
+                      ? 'Legendary items are too powerful to be upgraded.' 
+                      : 'Flatly boosts primary health, weapon damage, or armor ratings.'}
+                  </p>
                   <button
-                    disabled={gold < getUpgradeCost(activeItem)}
+                    disabled={activeItem.rarity === 'Legendary' || gold < getUpgradeCost(activeItem)}
                     className="forge-action-btn"
                     onClick={handleUpgrade}
                   >
-                    Upgrade Item
+                    {activeItem.rarity === 'Legendary' ? 'Cannot Upgrade Legendary' : 'Upgrade Item'}
                   </button>
                 </div>
 
@@ -308,19 +316,23 @@ export const Blacksmith: React.FC = () => {
                 <div className="forge-action-card">
                   <div className="forge-action-card-header">
                     <span className="forge-action-title">Reforge Rarity</span>
-                    {activeItem.rarity !== 'Legendary' ? (
-                      <span className="forge-action-cost">{getRarityCraftCost(activeItem)}g</span>
+                    {activeItem.rarity === 'Legendary' || activeItem.rarity === 'Epic' ? (
+                      <span className="forge-action-max">MAX CRAFTABLE</span>
                     ) : (
-                      <span className="forge-action-max">MAX</span>
+                      <span className="forge-action-cost">{getRarityCraftCost(activeItem)}g</span>
                     )}
                   </div>
-                  <p className="forge-action-desc">Ascends rarity tier and appends a randomized secondary trait affix.</p>
+                  <p className="forge-action-desc">
+                    {activeItem.rarity === 'Epic' || activeItem.rarity === 'Legendary'
+                      ? 'This item has reached the maximum craftable rarity tier.'
+                      : 'Ascends rarity tier and appends a randomized secondary trait affix.'}
+                  </p>
                   <button
-                    disabled={activeItem.rarity === 'Legendary' || gold < getRarityCraftCost(activeItem)}
+                    disabled={activeItem.rarity === 'Epic' || activeItem.rarity === 'Legendary' || gold < getRarityCraftCost(activeItem)}
                     className="forge-action-btn"
                     onClick={handleCraftRarity}
                   >
-                    Promote Rarity
+                    {activeItem.rarity === 'Epic' || activeItem.rarity === 'Legendary' ? 'Max Craftable Tier' : 'Promote Rarity'}
                   </button>
                 </div>
 

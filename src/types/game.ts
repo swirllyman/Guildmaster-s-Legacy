@@ -85,6 +85,7 @@ export interface DungeonRun {
     classTag?: HeroClass;
     type: 'stat' | 'skill' | 'heal';
     value: number;
+    synergyClasses?: HeroClass[];
   }[];
   scrollOfResurrectionCount: number;
   bossDefeated: boolean;
@@ -114,4 +115,23 @@ export interface DialogueLine {
   portrait: string;
   text: string;
 }
+
+export const POWERUP_DESCRIPTIONS: Record<string, string> = {
+  'Divine Shield': 'Grant Warrior +15% Health per stack',
+  'Shield Slam': 'Warrior attacks stun targets per stack',
+  'Vampiric Blade': 'Warrior gains +3% Life Steal per stack',
+  'Second Wind': 'Warrior heals 2% max HP per second per stack (only under 50% HP)',
+  'Sharpshooter': 'Grant Ranger +10% Damage per stack',
+  'Double Shot': 'Ranger attack speed +30% per stack (diminishing, capped at 75%)',
+  'Mana Flow': 'Grant Sorceress +20% Magical Power per stack',
+  'Fireball Strike': 'Increases spell explosion radius per stack',
+  'Rejuvenate': 'Heal all squad members 25% HP (instant)',
+  'Iron Will': 'Boost All Defense by +10% per stack',
+  'Charge': 'Warrior charges nearest enemy (no melee threats). Cooldown 20s (-2s/level, min 5s)',
+  'Block Mastery': 'Warrior gains +7% Block Chance per stack',
+  'Poison Arrow': 'Ranger arrows poison target (stacks x5, 1+1.5/level dmg per 2s, max 10)',
+  'Marked for Death': 'Enemies hit by Warrior are marked; Ranger attacks hit all marked enemies.',
+  'Quick Burn': 'Sorceress benefits from 50% (+10% per stack) of Ranger\'s Double Shot CDR.',
+  'Fire Armor': 'Sorceress shields Warrior; enemies hitting Warrior take 15 (+10 per stack) fire dmg.'
+};
 

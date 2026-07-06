@@ -1,15 +1,166 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import type { Hero, Item, SharedBag, DungeonRun, NPCQuestState, HeroClass, TemperamentType, EquipmentSlot, LivingHeroStatus, CompletedRunSummary, DialogueLine } from '../types/game';
+import type { Hero, Item, ItemStats, SharedBag, DungeonRun, NPCQuestState, HeroClass, TemperamentType, EquipmentSlot, LivingHeroStatus, CompletedRunSummary, DialogueLine } from '../types/game';
 
 // Helper to generate UUIDs
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 // Helper to generate items
-export const generateRandomItem = (level: number, forceRarity?: Item['rarity']): Item => {
+interface LegendaryTemplate {
+  name: string;
+  type: EquipmentSlot;
+  weight: 'light' | 'heavy' | 'none';
+  stats: ItemStats;
+  affixes: string[];
+}
+
+export const LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
+  {
+    name: 'Aegis of the Sun',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 5, hp: 20, armor: 4 },
+    affixes: ['Golden Aura: Periodic zaps deal 15 damage to a nearby enemy every 2s']
+  },
+  {
+    name: "Cindermaw's Guard",
+    type: 'chest',
+    weight: 'heavy',
+    stats: { hp: 25, armor: 6 },
+    affixes: ['Flaming Shield: Pulse 10 fire damage to all nearby enemies every 1.5s']
+  },
+  {
+    name: "Stormcaller's Pauldrons",
+    type: 'shoulders',
+    weight: 'light',
+    stats: { hp: 18, armor: 4, atkCooldownReduction: 0.10 },
+    affixes: ['Electric Shocks: Shock a random nearby enemy for 12 damage every 2.5s']
+  },
+  {
+    name: 'Vanish Boots',
+    type: 'boots',
+    weight: 'light',
+    stats: { hp: 15, speed: 30 },
+    affixes: ['Shadow Step: Leave a trail of purple smoke; grants +30% Movement Speed']
+  },
+  {
+    name: 'Death-Touch Grips',
+    type: 'gloves',
+    weight: 'light',
+    stats: { hp: 15, critChance: 10 },
+    affixes: ['Necrotic Strike: Attacks apply 2 stacks of poison']
+  },
+  {
+    name: 'Will of the Mountain',
+    type: 'pants',
+    weight: 'heavy',
+    stats: { hp: 40, armor: 8 },
+    affixes: ['Earthen Bastion: Revolves stone shields that block 15% damage']
+  },
+  {
+    name: 'Phoenix Rebirth Ring',
+    type: 'helm',
+    weight: 'light',
+    stats: { hp: 25, armor: 3 },
+    affixes: ['Phoenix Flame: 25% chance to release a fire burst (15 fire dmg) when hit']
+  },
+  {
+    name: 'Maelstrom Staff',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 7, magic: 20, chainChance: 0.80 },
+    affixes: ['Lightning Nova: Attacks chain lightning to 2 additional targets']
+  },
+  {
+    name: 'Zephyr Bow',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 6, atkSpeed: 1.30 },
+    affixes: ['Cyclone Shot: Attacks knock back enemies and deal extra damage']
+  },
+  {
+    name: 'Bloodrage Cleaver',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 8, lifeSteal: 0.05 },
+    affixes: ['Crimson Rage: Glows red; attack speed increases as health decreases']
+  },
+  {
+    name: 'Void Blade',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 7, critChance: 15 },
+    affixes: ['Void Strike: Attacks have a 20% chance to strike again for double damage']
+  },
+  {
+    name: 'Divine Bulwark',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 4, armor: 10, hp: 30 },
+    affixes: ['Sacred Aegis: Grants 2s of total invulnerability every 10 seconds']
+  },
+  {
+    name: 'Staff of the Wilds',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 5, hp: 20, magic: 12 },
+    affixes: ["Nature's Blossom: Heal the lowest-HP ally within 3 tiles for 8 HP every 3s"]
+  },
+  {
+    name: "Gravekeeper's Scythe",
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 8, lifeSteal: 0.08 },
+    affixes: ['Soul Feast: Defeating an enemy heals the wielder for 10% max HP']
+  },
+  {
+    name: "Frostmourne's Edge",
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 7, hp: 15 },
+    affixes: ["Frozen Heart: Slows nearby enemies' speed by 25% within 2.5 tiles"]
+  },
+  {
+    name: 'Sunfire Sabatons',
+    type: 'boots',
+    weight: 'light',
+    stats: { hp: 15, speed: 20 },
+    affixes: ['Magma Trail: Leaves a burning magma trail that deals 8 fire damage']
+  },
+  {
+    name: 'Volcanic Cuirass',
+    type: 'chest',
+    weight: 'heavy',
+    stats: { hp: 25, armor: 5 },
+    affixes: ['Lava Burst: Erupts on taking damage, dealing 12 fire damage to the attacker']
+  },
+  {
+    name: 'Glinting Goggles',
+    type: 'helm',
+    weight: 'light',
+    stats: { hp: 18, critChance: 12 },
+    affixes: ['Laser Precision: Fires laser beams at targets dealing +5 extra damage']
+  },
+  {
+    name: 'Astral Spaulders',
+    type: 'shoulders',
+    weight: 'light',
+    stats: { hp: 20, magic: 10 },
+    affixes: ['Star Shower: Rains down stars dealing 20 damage to random enemies every 4s']
+  },
+  {
+    name: "Titan's Grips",
+    type: 'gloves',
+    weight: 'heavy',
+    stats: { hp: 20, damage: 4 },
+    affixes: ['Seismic Slam: Attacks cause a shockwave dealing 50% splash damage in 1.5 tiles']
+  }
+];
+
+// Helper to generate items
+export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], allowLegendary = true): Item => {
   const types: EquipmentSlot[] = ['helm', 'shoulders', 'chest', 'pants', 'boots', 'gloves', 'weapon'];
   const type = types[Math.floor(Math.random() * types.length)];
   
-  // const rarities: Item['rarity'][] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
   let rarity: Item['rarity'] = 'Common';
   if (forceRarity) {
     rarity = forceRarity;
@@ -17,18 +168,47 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
     // Biome-scaled rarity luck: higher biomes = better odds at rare drops
     const biomeLevel = Math.max(1, Math.min(5, level || 1));
     const rarityThresholds: Record<number, { common: number; uncommon: number; rare: number; epic: number }> = {
-      1: { common: 50, uncommon: 80, rare: 95, epic: 99 },   // Biome 1: 1% Legendary, 4% Epic, 15% Rare
-      2: { common: 40, uncommon: 70, rare: 88, epic: 96 },   // Biome 2: 4% Legendary, 8% Epic, 18% Rare
-      3: { common: 30, uncommon: 60, rare: 80, epic: 93 },   // Biome 3: 7% Legendary, 13% Epic, 20% Rare
-      4: { common: 20, uncommon: 50, rare: 75, epic: 90 },   // Biome 4: 10% Legendary, 15% Epic, 25% Rare
-      5: { common: 15, uncommon: 45, rare: 70, epic: 88 },   // Biome 5: 12% Legendary, 18% Epic, 25% Rare
+      1: { common: 50, uncommon: 80, rare: 95, epic: 99.8 },   // Biome 1: 0.2% Legendary
+      2: { common: 40, uncommon: 70, rare: 88, epic: 99.5 },   // Biome 2: 0.5% Legendary
+      3: { common: 30, uncommon: 60, rare: 80, epic: 99.2 },   // Biome 3: 0.8% Legendary
+      4: { common: 20, uncommon: 50, rare: 75, epic: 98.8 },   // Biome 4: 1.2% Legendary
+      5: { common: 15, uncommon: 45, rare: 70, epic: 98.2 },   // Biome 5: 1.8% Legendary
     };
     const t = rarityThresholds[biomeLevel];
     const roll = Math.random() * 100;
-    if (roll > t.epic) rarity = 'Legendary';
-    else if (roll > t.rare) rarity = 'Epic';
+    if (roll > t.epic && allowLegendary) rarity = 'Legendary';
+    else if (roll > t.rare || (roll > t.epic && !allowLegendary)) rarity = 'Epic';
     else if (roll > t.uncommon) rarity = 'Rare';
     else if (roll > t.common) rarity = 'Uncommon';
+  }
+
+  // Handle Legendary item from templates
+  if (rarity === 'Legendary') {
+    const template = LEGENDARY_TEMPLATES[Math.floor(Math.random() * LEGENDARY_TEMPLATES.length)];
+    const scalar = level * 1.2;
+    const stats: ItemStats = {};
+    if (template.stats.damage) stats.damage = Math.round(template.stats.damage * scalar);
+    if (template.stats.hp) stats.hp = Math.round(template.stats.hp * scalar);
+    if (template.stats.armor) stats.armor = Math.round(template.stats.armor * scalar);
+    if (template.stats.magic) stats.magic = Math.round(template.stats.magic * scalar);
+
+    // Copy non-scaling attributes
+    if (template.stats.atkSpeed) stats.atkSpeed = template.stats.atkSpeed;
+    if (template.stats.speed) stats.speed = template.stats.speed;
+    if (template.stats.critChance) stats.critChance = template.stats.critChance;
+    if (template.stats.lifeSteal) stats.lifeSteal = template.stats.lifeSteal;
+    if (template.stats.chainChance) stats.chainChance = template.stats.chainChance;
+    if (template.stats.atkCooldownReduction) stats.atkCooldownReduction = template.stats.atkCooldownReduction;
+
+    return {
+      id: generateId(),
+      name: template.name,
+      type: template.type,
+      rarity: 'Legendary',
+      stats,
+      weight: template.weight,
+      affixes: [...template.affixes]
+    };
   }
 
   const suffixes: Record<Item['rarity'], string[]> = {
@@ -36,7 +216,7 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
     Uncommon: ['of Vitality', 'of Defiance', 'of Haste', 'of Striking'],
     Rare: ['of Vampirism', 'of Fortune', 'of Cleansing', 'of Focus'],
     Epic: ['of Chain Lightning', 'of Frozen Ice', 'of Burning Embers'],
-    Legendary: ['of the Arch-Mage', 'of the Warlord', 'of the Shadow Assassin', 'of the Holy Protector']
+    Legendary: [] // Handled separately above, kept here for type safety
   };
 
   const suffixList = suffixes[rarity];
@@ -80,21 +260,17 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity']):
     stats.critChance = Math.round(3 + Math.random() * 5);
     affixes.push(`+${stats.critChance}% Critical Strike Chance`);
   }
-  if (rarity === 'Rare' || rarity === 'Epic' || rarity === 'Legendary') {
+  if (rarity === 'Rare' || rarity === 'Epic') {
     stats.lifeSteal = parseFloat((0.01 + Math.random() * 0.01).toFixed(3));
     affixes.push(`+${Math.round(stats.lifeSteal * 100)}% Life Steal on Hit`);
     stats.speed = Math.round(5 + Math.random() * 10);
     affixes.push(`+${stats.speed}% Movement Speed`);
   }
-  if (rarity === 'Epic' || rarity === 'Legendary') {
+  if (rarity === 'Epic') {
     stats.atkCooldownReduction = parseFloat((0.05 + Math.random() * 0.07).toFixed(3));
     affixes.push(`+${Math.round(stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`);
     stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
     affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
-  }
-  if (rarity === 'Legendary') {
-    stats.magic = Math.round(15 + Math.random() * 15);
-    affixes.push(`+${stats.magic} Magic Power (Signature Trait)`);
   }
 
   return {
@@ -713,7 +889,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const upgradeItem = (itemId: string, location: 'bag' | 'hero', heroId?: string) => {
     const item = getItemRef(itemId, location, heroId);
-    if (!item) return;
+    if (!item || item.rarity === 'Legendary') return;
 
     // Upgrades cost scales with the level (+25 gold per upgrade level)
     const match = item.name.match(/\+(\d+)/);
@@ -823,10 +999,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const item = getItemRef(itemId, location, heroId);
     if (!item) return;
 
+    if (item.rarity === 'Epic' || item.rarity === 'Legendary') return; // Cannot craft legendary or upgrade legendary
+    
     const rarityOrder: Item['rarity'][] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
     const currentIndex = rarityOrder.indexOf(item.rarity);
-    if (currentIndex === rarityOrder.length - 1) return; // already legendary
-    
     const nextRarity = rarityOrder[currentIndex + 1];
     
     // Gold and material cost. Let's make it gold only for simplicity, scaling by rarity.
@@ -932,11 +1108,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRestockCount(c => c + 1);
     }
 
-    // Generate 4 items and 2 consumables
+        // Generate 4 items and 2 consumables
     const items: Item[] = [];
     const level = Math.max(1, Math.floor(runsCount / 2) + 1);
     for (let i = 0; i < 4; i++) {
-      items.push(generateRandomItem(level));
+      items.push(generateRandomItem(level, undefined, false));
     }
     // Add two slots for consumables:
     // Scroll of Resurrection
@@ -1063,10 +1239,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!prev) return null;
       let nextChamber = prev.currentChamber + 1;
       let nextBiome = prev.currentBiome;
+      let scrolls = prev.scrollOfResurrectionCount;
 
       if (nextChamber > 5) {
         nextChamber = 1;
         nextBiome += 1;
+        scrolls += 1;
       }
 
       // Check if game is cleared
@@ -1080,6 +1258,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...prev,
         currentBiome: nextBiome,
         currentChamber: nextChamber,
+        scrollOfResurrectionCount: scrolls,
         bossDefeated: false
       };
     });
@@ -1234,11 +1413,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           { title: 'Iron Will', description: 'Boost All Defense by +10%', type: 'stat' as const, value: 0.10 },
           { title: 'Charge', description: 'Warrior charges nearest enemy when clear', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Block Mastery', description: 'Warrior gains +7% Block Chance', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.07 },
-          { title: 'Poison Arrow', description: 'Ranger arrows apply stacking poison', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 }
+          { title: 'Poison Arrow', description: 'Ranger arrows apply stacking poison', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Marked for Death', description: 'Enemies hit by Warrior are marked; Ranger attacks hit all marked enemies', synergyClasses: ['WARRIOR', 'RANGER'] as HeroClass[], type: 'skill' as const, value: 1 },
+          { title: 'Quick Burn', description: 'Sorceress benefits from 50% (+10% per level) of Ranger\'s Double Shot CDR', synergyClasses: ['RANGER', 'WIZARD'] as HeroClass[], type: 'skill' as const, value: 1 },
+          { title: 'Fire Armor', description: 'Sorceress shields Warrior with fire; attackers of Warrior take 15 (+10/lvl) dmg', synergyClasses: ['WARRIOR', 'WIZARD'] as HeroClass[], type: 'skill' as const, value: 1 }
         ];
 
-        // Filter choices to only match living classes (or be generic)
-        const filteredChoices = allChoices.filter(c => !c.classTag || livingClasses.includes(c.classTag));
+        // Filter choices to only match living classes (or be generic, or require all synergy classes)
+        const filteredChoices = allChoices.filter(c => {
+          if (c.synergyClasses) {
+            return c.synergyClasses.every(cls => livingClasses.includes(cls));
+          }
+          return !c.classTag || livingClasses.includes(c.classTag);
+        });
         
         // Pick 3 random
         const selected: typeof draftChoices = [];
@@ -1253,7 +1440,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             description: choice.description,
             classTag: choice.classTag,
             type: choice.type,
-            value: choice.value
+            value: choice.value,
+            synergyClasses: choice.synergyClasses
           });
         }
 

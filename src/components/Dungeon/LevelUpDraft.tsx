@@ -1,17 +1,111 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
-import { Shield, Sparkles, Sword, Heart, Activity, Zap } from 'lucide-react';
+import { POWERUP_DESCRIPTIONS } from '../../types/game';
+import { Shield, Sparkles, Sword, Heart, Activity, Zap, Layers } from 'lucide-react';
 
 export const LevelUpDraft: React.FC = () => {
-  const { activeRun, triggerDraftChoice } = useGame();
+  const { activeRun, roster, triggerDraftChoice } = useGame();
 
-  if (!activeRun || !activeRun.drafting) return null;
+  const [isAutoDraftActive, setIsAutoDraftActive] = useState<boolean>(() => {
+    return localStorage.getItem('autoDraftActive') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('autoDraftActive', isAutoDraftActive ? 'true' : 'false');
+  }, [isAutoDraftActive]);
 
   const handleSelect = (index: number) => {
     triggerDraftChoice(index);
   };
 
-  const getCardIcon = (type: 'stat' | 'skill' | 'heal', classTag?: string) => {
+  useEffect(() => {
+    if (!isAutoDraftActive || !activeRun || !activeRun.drafting || !activeRun.draftChoices || activeRun.draftChoices.length === 0) {
+      return;
+    }
+
+    let bestIndex = 0;
+    let highestScore = -Infinity;
+
+    activeRun.draftChoices.forEach((choice, index) => {
+      let score = 0;
+
+      // 1. Synergy upgrades get the highest priority
+      if (choice.synergyClasses && choice.synergyClasses.length > 0) {
+        score += 100;
+      }
+
+      // 2. Class-specific active skills
+      if (choice.classTag && choice.type === 'skill') {
+        score += 50;
+      }
+
+      // 3. Stat upgrades
+      if (choice.type === 'stat') {
+        score += 30;
+      }
+
+      // 4. Heals (elevated dynamically based on party HP)
+      if (choice.type === 'heal') {
+        let totalHp = 0;
+        let totalMaxHp = 0;
+        if (activeRun.livingSquad) {
+          Object.values(activeRun.livingSquad).forEach((hero: any) => {
+            if (hero.hp > 0) {
+              totalHp += hero.hp;
+              totalMaxHp += hero.maxHp;
+            }
+          });
+        }
+        const avgHpRatio = totalMaxHp > 0 ? (totalHp / totalMaxHp) : 1;
+        
+        if (avgHpRatio < 0.4) {
+          score += 120; // Critical healing need
+        } else if (avgHpRatio < 0.7) {
+          score += 40;  // Moderate healing need
+        } else {
+          score += 10;  // Low healing need
+        }
+      }
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    const timeoutId = window.setTimeout(() => {
+      handleSelect(bestIndex);
+    }, 1000);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isAutoDraftActive, activeRun?.drafting, activeRun?.draftChoices]);
+
+  if (!activeRun || !activeRun.drafting) return null;
+
+  const getAvatarPath = (heroClass: string) => {
+    const pathMap: Record<string, string> = {
+      RANGER: 'ranger.png',
+      WARRIOR: 'warrior_chef.png',
+      WIZARD: 'sorceress.png',
+      ROGUE: 'ranger.png',
+      PALADIN: 'warrior.png',
+      DRUID: 'ranger.png',
+      NECROMANCER: 'wizard.png'
+    };
+    const path = pathMap[heroClass] || 'ranger.png';
+    return import.meta.env.BASE_URL + path;
+  };
+
+  const selectedPowerups = activeRun.selectedPowerups ?? [];
+  const stackedPowerups = selectedPowerups.reduce<Record<string, number>>((acc, p) => {
+    acc[p] = (acc[p] || 0) + 1;
+    return acc;
+  }, {});
+
+  const getCardIcon = (type: 'stat' | 'skill' | 'heal', classTag?: string, isSynergy?: boolean) => {
+    if (isSynergy) return <Layers className="text-fuchsia-400" size={28} />;
     if (classTag === 'WARRIOR') return <Shield className="text-blue-400" size={28} />;
     if (classTag === 'RANGER') return <Sword className="text-green-400" size={28} />;
     if (classTag === 'WIZARD') return <Zap className="text-purple-400" size={28} />;
@@ -21,31 +115,151 @@ export const LevelUpDraft: React.FC = () => {
   };
 
   const getCardThemeClass = (classTag?: string) => {
-    if (classTag === 'WARRIOR') return 'border-blue-500/40 hover:border-blue-400 bg-blue-950/10';
-    if (classTag === 'RANGER') return 'border-green-500/40 hover:border-green-400 bg-green-950/10';
-    if (classTag === 'WIZARD') return 'border-purple-500/40 hover:border-purple-400 bg-purple-950/10';
-    return 'border-amber-500/40 hover:border-amber-400 bg-amber-950/10';
+    if (classTag === 'WARRIOR') return 'card-warrior';
+    if (classTag === 'RANGER') return 'card-ranger';
+    if (classTag === 'WIZARD') return 'card-wizard';
+    return 'card-generic';
   };
 
   return (
     <div className="draft-overlay-container">
       <div className="draft-board-container">
         {/* Header */}
-        <div className="draft-board-header">
+        <div className="draft-board-header" style={{ position: 'relative' }}>
           <span className="draft-header-label">
             <Sparkles size={12} className="animate-spin text-amber-400" /> Team Level Increased
           </span>
-          <h2 className="draft-header-title">Draft Team Ability</h2>
-          <p className="draft-header-desc">
-            Choose one passive enhancement or tactical support line. The ability applies directly to surviving team members.
-          </p>
+          <h2 className="draft-header-title" style={{ marginBottom: '8px' }}>Draft Team Ability</h2>
+          
+          <label className={`auto-camp-toggle-container ${isAutoDraftActive ? 'active' : ''}`} style={{ marginBottom: '12px' }}>
+            <input
+              type="checkbox"
+              className="auto-camp-checkbox"
+              checked={isAutoDraftActive}
+              onChange={(e) => setIsAutoDraftActive(e.target.checked)}
+            />
+            <span>Auto-Select Best Powerup</span>
+          </label>
+        </div>
+
+        {/* Squad Status & Selected Powerups Dashboard */}
+        <div className="draft-status-dashboard">
+          {/* Left Panel: Current Party Health */}
+          <div className="draft-status-panel">
+            <div className="draft-panel-header">
+              <span className="draft-panel-title">
+                <Heart size={14} className="text-red-400 animate-pulse" /> Current Party Health
+              </span>
+              <span className="draft-panel-badge">
+                {Object.keys(activeRun.livingSquad).filter(id => activeRun.livingSquad[id].hp > 0).length} Alive
+              </span>
+            </div>
+            
+            <div className="draft-hp-list">
+              {Object.keys(activeRun.livingSquad).map(id => {
+                const hero = roster.find(h => h.character_id === id);
+                if (!hero) return null;
+                const runHero = activeRun.livingSquad[id];
+                const isDead = runHero.hp <= 0;
+                const hpRatio = Math.max(0, Math.min(1, runHero.hp / runHero.maxHp));
+                const displayClass = hero.class === 'WIZARD' ? 'SORCERESS' : hero.class;
+
+                return (
+                  <div key={id} className={`draft-hp-row ${isDead ? 'deceased' : ''}`}>
+                    <img 
+                      src={getAvatarPath(hero.class)} 
+                      alt={displayClass} 
+                      className="draft-hp-avatar" 
+                    />
+                    <div className="draft-hp-info">
+                      <div className="draft-hp-top-line">
+                        <span className="draft-hp-name">{displayClass}</span>
+                        <span className={`draft-hp-numbers ${isDead ? 'text-red-500 font-bold' : ''}`}>
+                          {isDead ? 'DECEASED' : `${runHero.hp} / ${runHero.maxHp} HP`}
+                        </span>
+                      </div>
+                      <div className="draft-hp-bar-bg">
+                        <div 
+                          className="draft-hp-bar-fill" 
+                          style={{ 
+                            width: `${hpRatio * 100}%`,
+                            background: hpRatio > 0.5 
+                              ? 'linear-gradient(90deg, #10b981, #34d399)' 
+                              : hpRatio > 0.2 
+                              ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' 
+                              : 'linear-gradient(90deg, #ef4444, #f87171)'
+                          }} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Panel: Current Powerups Drafted */}
+          <div className="draft-status-panel">
+            <div className="draft-panel-header">
+              <span className="draft-panel-title">
+                <Layers size={14} className="text-purple-400" /> Active Powerups Drafted
+              </span>
+              <span className="draft-panel-badge gold">
+                {selectedPowerups.length} Total
+              </span>
+            </div>
+
+            <div className="draft-powerups-list">
+              {Object.keys(stackedPowerups).length === 0 ? (
+                <div className="draft-powerups-empty">
+                  <span>No persistent powerups drafted yet.</span>
+                </div>
+              ) : (
+                Object.entries(stackedPowerups).map(([powerup, count], idx) => {
+                  const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
+                  const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block'));
+                  const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge'));
+                  const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike'));
+                  const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind'));
+                  const desc = POWERUP_DESCRIPTIONS[powerup] || 'Active team enhancement';
+
+                  return (
+                    <div 
+                      key={`${powerup}-${idx}`}
+                      className="draft-powerup-pill"
+                    >
+                      {isSynergy && <Layers className="text-fuchsia-400 flex-shrink-0" size={13} />}
+                      {isDefense && <Shield className="text-blue-400 flex-shrink-0" size={13} />}
+                      {isAttack && <Sword className="text-green-400 flex-shrink-0" size={13} />}
+                      {isMagic && <Zap className="text-purple-400 flex-shrink-0" size={13} />}
+                      {isHeal && <Heart className="text-red-400 flex-shrink-0" size={13} />}
+                      {!isSynergy && !isDefense && !isAttack && !isMagic && !isHeal && <Sparkles className="text-amber-400 flex-shrink-0" size={13} />}
+                      
+                      <span className="draft-powerup-pill-name">{powerup}</span>
+                      {count > 1 && <span className="draft-powerup-pill-badge">x{count}</span>}
+
+                      <div className="draft-powerup-tooltip">
+                        {desc}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 3-Card Array */}
         <div className="draft-cards-grid">
           {activeRun.draftChoices.map((choice, index) => {
+            const isSynergy = !!choice.synergyClasses && choice.synergyClasses.length > 0;
             const isClassSpecific = !!choice.classTag;
-            const themeClass = getCardThemeClass(choice.classTag);
+            let themeClass = '';
+            if (isSynergy) {
+              themeClass = 'card-synergy';
+            } else {
+              themeClass = getCardThemeClass(choice.classTag);
+            }
 
             return (
               <div
@@ -55,11 +269,15 @@ export const LevelUpDraft: React.FC = () => {
               >
                 {/* Visual Icon */}
                 <div className="draft-card-icon-box">
-                  {getCardIcon(choice.type, choice.classTag)}
+                  {getCardIcon(choice.type, choice.classTag, isSynergy)}
                 </div>
 
                 {/* Tags */}
-                {isClassSpecific ? (
+                {isSynergy ? (
+                  <span className="draft-card-tag card-synergy-tag">
+                    Synergy Upgrade
+                  </span>
+                ) : isClassSpecific ? (
                   <span className="draft-card-tag class-specific">
                     {choice.classTag === 'WIZARD' ? 'SORCERESS' : choice.classTag} Upgrade
                   </span>

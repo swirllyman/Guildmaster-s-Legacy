@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useGame, generateRandomItem } from '../../context/GameContext';
-import type { EquipmentSlot, Item } from '../../types/game';
+import { type EquipmentSlot, type Item, POWERUP_DESCRIPTIONS as powerupDescriptions } from '../../types/game';
 import { ItemTooltip } from '../Hub/ItemTooltip';
 import { 
   ShieldAlert, 
@@ -17,7 +17,8 @@ import {
   Pause,
   FastForward,
   Sparkles,
-  LogOut
+  LogOut,
+  Layers
 } from 'lucide-react';
 
 interface GridPos {
@@ -60,6 +61,18 @@ interface SimulatedEntity {
   chargeProgress?: number;
   chargeTargetId?: string;
   chargeDamage?: number;
+  isMarked?: boolean;
+  // Legendary fields
+  legAegisTimer?: number;
+  legCindermawTimer?: number;
+  legStormcallerTimer?: number;
+  legDivineBulwarkTimer?: number;
+  legDivineBulwarkActive?: boolean;
+  legDivineBulwarkActiveTimer?: number;
+  legStaffWildsTimer?: number;
+  legAstralSpauldersTimer?: number;
+  legSunfireTrailTimer?: number;
+  frostSlowed?: boolean;
 }
 
 interface FloatingText {
@@ -68,23 +81,9 @@ interface FloatingText {
   y: number;
   color: string;
   life: number; // 0-1
+  vx?: number;
+  vy?: number;
 }
-
-const powerupDescriptions: Record<string, string> = {
-  'Divine Shield': 'Grant Warrior +15% Health per stack',
-  'Shield Slam': 'Warrior attacks stun targets per stack',
-  'Vampiric Blade': 'Warrior gains +3% Life Steal per stack',
-  'Second Wind': 'Warrior heals 2% max HP per second per stack (only under 50% HP)',
-  'Sharpshooter': 'Grant Ranger +10% Damage per stack',
-  'Double Shot': 'Ranger attack speed +30% per stack (diminishing, capped at 75%)',
-  'Mana Flow': 'Grant Sorceress +20% Magical Power per stack',
-  'Fireball Strike': 'Increases spell explosion radius per stack',
-  'Rejuvenate': 'Heal all squad members 25% HP (instant)',
-  'Iron Will': 'Boost All Defense by +10% per stack',
-  'Charge': 'Warrior charges nearest enemy (no melee threats). Cooldown 20s (-2s/level, min 5s)',
-  'Block Mastery': 'Warrior gains +7% Block Chance per stack',
-  'Poison Arrow': 'Ranger arrows poison target (stacks x5, 1+1.5/level dmg per 2s, max 10)'
-};
 
 interface Particle {
   x: number;
@@ -196,6 +195,13 @@ export const CombatSimulation: React.FC = () => {
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+  const [isAutoCampActive, setIsAutoCampActive] = useState<boolean>(() => {
+    return localStorage.getItem('autoCampActive') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('autoCampActive', isAutoCampActive ? 'true' : 'false');
+  }, [isAutoCampActive]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     setMouseCoords({ x: e.clientX, y: e.clientY });
@@ -224,6 +230,9 @@ export const CombatSimulation: React.FC = () => {
   const particlesRef = useRef<Particle[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const slashEffectsRef = useRef<SlashEffect[]>([]);
+  const sunfireTrailsRef = useRef<{ x: number; y: number; life: number; damage: number }[]>([]);
+  const fallingStarsRef = useRef<{ x: number; y: number; targetX: number; targetY: number; speed: number; damage: number; life: number }[]>([]);
+  const visualEffectsRef = useRef<{ type: 'lightning' | 'laser' | 'nova' | 'shockwave' | 'leaf' | 'ghost' | 'star'; x1: number; y1: number; x2?: number; y2?: number; color: string; life: number; maxLife: number; size?: number }[]>([]);
   const gridMapRef = useRef<number[][]>([]); // 0: walkable, 1: wall
   const fogMapRef = useRef<boolean[][]>([]); // Fog of war
   const lastUpdateRef = useRef<number>(0);
@@ -329,15 +338,20 @@ export const CombatSimulation: React.FC = () => {
     
     addRunGold(goldScavenged);
     addRunXp(xpScavenged);
-    triggerToast('🏆 Chamber Cleared!', 'info');
-
-    setCombatLog(log => [
-      ...log,
-      `✨ Chamber Cleared! Scavenged ${goldScavenged} Gold and +${xpScavenged} XP.`
-    ]);
-
     if (roomType === 5) {
-      setCombatLog(log => [...log, `🏆 Gorgon Overlord Slain! Expedition Successful!`]);
+      triggerToast('🏆 Biome Cleared! Gained a Resurrection Scroll.', 'info');
+      setCombatLog(log => [
+        ...log,
+        `✨ Chamber Cleared! Scavenged ${goldScavenged} Gold and +${xpScavenged} XP.`,
+        `🏆 Gorgon Overlord Slain! Biome ${activeRun.currentBiome} Cleared!`,
+        `📜 Gained +1 Resurrection Scroll!`
+      ]);
+    } else {
+      triggerToast('🏆 Chamber Cleared!', 'info');
+      setCombatLog(log => [
+        ...log,
+        `✨ Chamber Cleared! Scavenged ${goldScavenged} Gold and +${xpScavenged} XP.`
+      ]);
     }
 
     advanceChamber();
@@ -535,10 +549,15 @@ export const CombatSimulation: React.FC = () => {
         }
       }
 
-      // Class base damage + flat weapon damage from equipped weapon
+      // Class base damage + flat damage from all equipped items
       const classBaseDmg = hero.class === 'WARRIOR' ? 12 : hero.class === 'WIZARD' ? 16 : 9;
-      const weapon = hero.equipment['weapon'];
-      const weaponDmg = weapon?.stats?.damage ?? 0;
+      let equipmentDmg = 0;
+      if (hero.equipment) {
+        for (const key in hero.equipment) {
+          const item = hero.equipment[key as EquipmentSlot];
+          if (item?.stats?.damage) equipmentDmg += item.stats.damage;
+        }
+      }
 
       // Sum lifeSteal from all equipped items
       let lifeSteal = 0;
@@ -571,11 +590,20 @@ export const CombatSimulation: React.FC = () => {
         speed: combinedSpeed * 1.5,
         attackRange: hero.class === 'RANGER' ? 4 : hero.class === 'WIZARD' ? 3.5 : 1.2,
         attackCooldown: 0,
-        damage: classBaseDmg + weaponDmg,
+        damage: classBaseDmg + equipmentDmg,
         lifeSteal,
         tempBuffs: runStatus.tempBuffs ?? [],
         color: hero.class === 'WARRIOR' ? '#0070dd' : hero.class === 'WIZARD' ? '#a335ee' : '#1eff00',
         isDead: false,
+        legAegisTimer: 0,
+        legCindermawTimer: 0,
+        legStormcallerTimer: 0,
+        legDivineBulwarkTimer: 0,
+        legDivineBulwarkActive: false,
+        legDivineBulwarkActiveTimer: 0,
+        legStaffWildsTimer: 0,
+        legAstralSpauldersTimer: 0,
+        legSunfireTrailTimer: 0
       });
     });
 
@@ -886,13 +914,386 @@ export const CombatSimulation: React.FC = () => {
     particlesRef.current = particlesRef.current.filter(p => p.life > 0);
 
     floatingTextsRef.current.forEach(t => {
-      t.y -= 20 * dt;
+      if (t.vx === undefined || t.vy === undefined) {
+        // Randomize direction: left or right
+        const goRight = Math.random() > 0.5;
+        // Horizontal speed: 15 to 35 px/s
+        t.vx = (goRight ? 1 : -1) * (15 + Math.random() * 20);
+        // Initial vertical speed upwards: -60 to -80 px/s
+        t.vy = -60 - Math.random() * 20;
+      }
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+      t.vy += 120 * dt; // Gravity effect pulling it down to create an arc
       t.life -= dt * 1.5;
     });
     floatingTextsRef.current = floatingTextsRef.current.filter(t => t.life > 0);
 
     const entities = entitiesRef.current;
     const heroTypes = new Set(['ranger','warrior','wizard','rogue','paladin','druid','necromancer']);
+
+    // Reset frostSlowed flag for all hostiles
+    entities.forEach(e => {
+      if (!heroTypes.has(e.type)) {
+        e.frostSlowed = false;
+      }
+    });
+
+    // Process Legendary Item Effects
+    entities.forEach(ent => {
+      if (ent.isDead || !heroTypes.has(ent.type)) return;
+
+      const hero = roster.find(h => h.character_id === ent.id);
+      if (!hero || !hero.equipment) return;
+
+      // Identify equipped legendary items
+      const equippedLegendaries = new Set<string>();
+      for (const slot in hero.equipment) {
+        const item = hero.equipment[slot as EquipmentSlot];
+        if (item && item.rarity === 'Legendary') {
+          equippedLegendaries.add(item.name);
+        }
+      }
+
+      if (equippedLegendaries.size === 0) return;
+
+      // 1. Aegis of the Sun
+      if (equippedLegendaries.has('Aegis of the Sun')) {
+        if (ent.legAegisTimer === undefined) ent.legAegisTimer = 0;
+        ent.legAegisTimer += dt;
+        if (ent.legAegisTimer >= 2.0) {
+          ent.legAegisTimer -= 2.0;
+          // Strike a random nearby enemy within 4 tiles
+          const target = entities.find(e => !e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot' && Math.hypot(e.posX - ent.posX, e.posY - ent.posY) <= 4 * tileSize);
+          if (target) {
+            target.hp = Math.max(0, target.hp - 15);
+            visualEffectsRef.current.push({
+              type: 'lightning',
+              x1: ent.posX,
+              y1: ent.posY,
+              x2: target.posX,
+              y2: target.posY,
+              color: '#fbbf24', // Golden yellow
+              life: 0.25,
+              maxLife: 0.25
+            });
+            floatingTextsRef.current.push({
+              text: `-15 (Sun Aegis)`,
+              x: target.posX,
+              y: target.posY - 12,
+              color: '#fbbf24',
+              life: 1.0
+            });
+            if (target.hp <= 0) {
+              target.isDead = true;
+              setCombatLog(log => [...log, `💀 ${target.name} was incinerated by Aegis of the Sun.`].slice(-40));
+            }
+          }
+        }
+      }
+
+      // 2. Cindermaw's Guard
+      if (equippedLegendaries.has("Cindermaw's Guard")) {
+        if (ent.legCindermawTimer === undefined) ent.legCindermawTimer = 0;
+        ent.legCindermawTimer += dt;
+        if (ent.legCindermawTimer >= 1.5) {
+          ent.legCindermawTimer -= 1.5;
+          // Pulse fire damage to all nearby enemies within 2.2 tiles
+          entities.forEach(e => {
+            if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+              const dist = Math.hypot(e.posX - ent.posX, e.posY - ent.posY);
+              if (dist <= 2.2 * tileSize) {
+                e.hp = Math.max(0, e.hp - 10);
+                floatingTextsRef.current.push({
+                  text: `-10 (Flame Pulse)`,
+                  x: e.posX,
+                  y: e.posY - 8,
+                  color: '#f97316',
+                  life: 0.8
+                });
+                if (e.hp <= 0) {
+                  e.isDead = true;
+                  setCombatLog(log => [...log, `💀 ${e.name} burned to ashes.`].slice(-40));
+                }
+              }
+            }
+          });
+          // Visual flame burst
+          visualEffectsRef.current.push({
+            type: 'nova',
+            x1: ent.posX,
+            y1: ent.posY,
+            color: '#ef4444',
+            size: 2.2 * tileSize,
+            life: 0.3,
+            maxLife: 0.3
+          });
+        }
+      }
+
+      // 3. Stormcaller's Pauldrons
+      if (equippedLegendaries.has("Stormcaller's Pauldrons")) {
+        if (ent.legStormcallerTimer === undefined) ent.legStormcallerTimer = 0;
+        ent.legStormcallerTimer += dt;
+        if (ent.legStormcallerTimer >= 2.5) {
+          ent.legStormcallerTimer -= 2.5;
+          // Shock a random nearby enemy for 12 damage
+          const target = entities.find(e => !e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot' && Math.hypot(e.posX - ent.posX, e.posY - ent.posY) <= 3.5 * tileSize);
+          if (target) {
+            target.hp = Math.max(0, target.hp - 12);
+            visualEffectsRef.current.push({
+              type: 'lightning',
+              x1: ent.posX,
+              y1: ent.posY,
+              x2: target.posX,
+              y2: target.posY,
+              color: '#06b6d4', // Cyan
+              life: 0.25,
+              maxLife: 0.25
+            });
+            floatingTextsRef.current.push({
+              text: `-12 (Storm Shock)`,
+              x: target.posX,
+              y: target.posY - 12,
+              color: '#22d3ee',
+              life: 1.0
+            });
+            if (target.hp <= 0) {
+              target.isDead = true;
+              setCombatLog(log => [...log, `💀 ${target.name} was electrocuted.`].slice(-40));
+            }
+          }
+        }
+      }
+
+      // 4. Vanish Boots (Leaves trail of purple smoke particles)
+      if (equippedLegendaries.has('Vanish Boots')) {
+        // Spawn purple smoke particles periodically
+        if (Math.random() < 0.2) {
+          particlesRef.current.push({
+            x: ent.posX + (Math.random() - 0.5) * 8,
+            y: ent.posY + (Math.random() - 0.5) * 8,
+            vx: (Math.random() - 0.5) * 15,
+            vy: (Math.random() - 0.5) * 15,
+            color: '#a855f7', // Purple
+            size: 3 + Math.random() * 3,
+            life: 0.6 + Math.random() * 0.4
+          });
+        }
+      }
+
+      // 12. Divine Bulwark
+      if (equippedLegendaries.has('Divine Bulwark')) {
+        if (ent.legDivineBulwarkTimer === undefined) ent.legDivineBulwarkTimer = 0;
+        ent.legDivineBulwarkTimer += dt;
+        
+        if (ent.legDivineBulwarkActive) {
+          if (ent.legDivineBulwarkActiveTimer === undefined) ent.legDivineBulwarkActiveTimer = 0;
+          ent.legDivineBulwarkActiveTimer += dt;
+          if (ent.legDivineBulwarkActiveTimer >= 2.0) {
+            ent.legDivineBulwarkActive = false;
+            ent.legDivineBulwarkActiveTimer = 0;
+          }
+        }
+
+        if (ent.legDivineBulwarkTimer >= 10.0) {
+          ent.legDivineBulwarkTimer = 0;
+          ent.legDivineBulwarkActive = true;
+          ent.legDivineBulwarkActiveTimer = 0;
+          floatingTextsRef.current.push({
+            text: `INVULNERABLE!`,
+            x: ent.posX,
+            y: ent.posY - 16,
+            color: '#eab308',
+            life: 1.5
+          });
+        }
+      }
+
+      // 13. Staff of the Wilds
+      if (equippedLegendaries.has('Staff of the Wilds')) {
+        if (ent.legStaffWildsTimer === undefined) ent.legStaffWildsTimer = 0;
+        ent.legStaffWildsTimer += dt;
+        if (ent.legStaffWildsTimer >= 3.0) {
+          ent.legStaffWildsTimer -= 3.0;
+          // Heal the lowest-HP ally within 3 tiles
+          let lowestAlly: any = null;
+          let minHPpct = 1.1;
+          entities.forEach(e => {
+            if (!e.isDead && heroTypes.has(e.type)) {
+              const dist = Math.hypot(e.posX - ent.posX, e.posY - ent.posY);
+              if (dist <= 3.5 * tileSize) {
+                const pct = e.hp / e.maxHp;
+                if (pct < minHPpct) {
+                  minHPpct = pct;
+                  lowestAlly = e;
+                }
+              }
+            }
+          });
+          if (lowestAlly) {
+            const actualHeal = Math.min(8, (lowestAlly as SimulatedEntity).maxHp - (lowestAlly as SimulatedEntity).hp);
+            if (actualHeal > 0) {
+              (lowestAlly as SimulatedEntity).hp += actualHeal;
+              if (run.livingSquad[lowestAlly.id]) {
+                run.livingSquad[lowestAlly.id].hp = lowestAlly.hp;
+              }
+              floatingTextsRef.current.push({
+                text: `+${actualHeal} (Wilds Heal)`,
+                x: lowestAlly.posX,
+                y: lowestAlly.posY - 12,
+                color: '#4ade80',
+                life: 1.2
+              });
+              visualEffectsRef.current.push({
+                type: 'leaf',
+                x1: ent.posX,
+                y1: ent.posY,
+                x2: lowestAlly.posX,
+                y2: lowestAlly.posY,
+                color: '#22c55e',
+                life: 0.4,
+                maxLife: 0.4
+              });
+            }
+          }
+        }
+      }
+
+      // 15. Frostmourne's Edge slowing aura slow
+      if (equippedLegendaries.has("Frostmourne's Edge")) {
+        entities.forEach(e => {
+          if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+            const dist = Math.hypot(e.posX - ent.posX, e.posY - ent.posY);
+            if (dist <= 2.6 * tileSize) {
+              e.frostSlowed = true;
+            }
+          }
+        });
+      }
+
+      // 16. Sunfire Sabatons magma trail spawning
+      if (equippedLegendaries.has('Sunfire Sabatons')) {
+        if (ent.legSunfireTrailTimer === undefined) ent.legSunfireTrailTimer = 0;
+        ent.legSunfireTrailTimer += dt;
+        if (ent.legSunfireTrailTimer >= 0.15) {
+          ent.legSunfireTrailTimer -= 0.15;
+          sunfireTrailsRef.current.push({
+            x: ent.posX,
+            y: ent.posY,
+            life: 3.0, // Trail lasts 3 seconds
+            damage: 8
+          });
+        }
+      }
+
+      // 19. Astral Spaulders falling stars spawning
+      if (equippedLegendaries.has('Astral Spaulders')) {
+        if (ent.legAstralSpauldersTimer === undefined) ent.legAstralSpauldersTimer = 0;
+        ent.legAstralSpauldersTimer += dt;
+        if (ent.legAstralSpauldersTimer >= 4.0) {
+          ent.legAstralSpauldersTimer -= 4.0;
+          // Spawn a falling star targeting a random enemy
+          const target = entities.find(e => !e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot');
+          if (target) {
+            fallingStarsRef.current.push({
+              x: target.posX + (Math.random() - 0.5) * 60,
+              y: -50, // Starts above screen
+              targetX: target.posX,
+              targetY: target.posY,
+              speed: 250,
+              damage: 20,
+              life: 1.0
+            });
+            // Visual falling star path
+            visualEffectsRef.current.push({
+              type: 'star',
+              x1: target.posX,
+              y1: target.posY,
+              color: '#facc15',
+              life: 0.5,
+              maxLife: 0.5
+            });
+          }
+        }
+      }
+    });
+
+    // Update & Collision check for Sunfire Sabatons Trails
+    sunfireTrailsRef.current.forEach(trail => {
+      trail.life -= dt;
+      // Check collision with all enemies
+      entities.forEach(e => {
+        if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+          const dist = Math.hypot(e.posX - trail.x, e.posY - trail.y);
+          if (dist <= 14) {
+            // Apply burning damage tick if cooldown (let's say they take damage once per trail instance per 0.5s)
+            if (trail.life % 0.5 < dt) {
+              e.hp = Math.max(0, e.hp - Math.round(trail.damage * dt * 2)); // scale up a bit to feel impactful
+            }
+          }
+        }
+      });
+    });
+    sunfireTrailsRef.current = sunfireTrailsRef.current.filter(t => t.life > 0);
+
+    // Update & Collision check for Falling Stars
+    fallingStarsRef.current.forEach(star => {
+      const angle = Math.atan2(star.targetY - star.y, star.targetX - star.x);
+      const dist = Math.hypot(star.targetX - star.x, star.targetY - star.y);
+      const step = star.speed * dt;
+      if (dist <= step) {
+        star.x = star.targetX;
+        star.y = star.targetY;
+        star.life = 0; // explode!
+        
+        // Explode: deal damage to all enemies in 1.5 tiles radius
+        entities.forEach(e => {
+          if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+            const d = Math.hypot(e.posX - star.targetX, e.posY - star.targetY);
+            if (d <= 1.5 * tileSize) {
+              e.hp = Math.max(0, e.hp - star.damage);
+              floatingTextsRef.current.push({
+                text: `-${star.damage} (Starfall)`,
+                x: e.posX,
+                y: e.posY - 10,
+                color: '#eab308',
+                life: 1.2
+              });
+              if (e.hp <= 0) {
+                e.isDead = true;
+                setCombatLog(log => [...log, `💀 ${e.name} crushed by a star.`].slice(-40));
+              }
+            }
+          }
+        });
+        
+        // Exploding star particles
+        for (let i = 0; i < 8; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const s = 30 + Math.random() * 50;
+          particlesRef.current.push({
+            x: star.targetX,
+            y: star.targetY,
+            vx: Math.cos(a) * s,
+            vy: Math.sin(a) * s,
+            color: '#facc15',
+            size: 2 + Math.random() * 2,
+            life: 0.4 + Math.random() * 0.3
+          });
+        }
+      } else {
+        star.x += Math.cos(angle) * step;
+        star.y += Math.sin(angle) * step;
+      }
+    });
+    fallingStarsRef.current = fallingStarsRef.current.filter(s => s.life > 0);
+
+    // Update visualEffects Ref
+    visualEffectsRef.current.forEach(fx => {
+      fx.life -= dt;
+    });
+    visualEffectsRef.current = visualEffectsRef.current.filter(fx => fx.life > 0);
 
     // Poison tick damage processing
     poisonStacksRef.current.forEach((poison, entityId) => {
@@ -967,10 +1368,215 @@ export const CombatSimulation: React.FC = () => {
       // Track toward target's current position
       const tdx = target.posX - proj.x;
       const tdy = target.posY - proj.y;
-      const tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+      const tdist = Math.hypot(tdx, tdy);
       if (tdist < 8) {
         // Impact! Apply damage
-        target.hp = Math.max(target.hp - proj.damage, 0);
+        const attacker = entities.find(e => e.id === proj.attackerId && !e.isDead);
+        const attackerHero = attacker && heroTypes.has(attacker.type) ? roster.find(r => r.character_id === attacker.id) : null;
+        const attackerLegendaries = new Set<string>();
+        if (attackerHero && attackerHero.equipment) {
+          for (const slot in attackerHero.equipment) {
+            const item = attackerHero.equipment[slot as EquipmentSlot];
+            if (item && item.rarity === 'Legendary') {
+              attackerLegendaries.add(item.name);
+            }
+          }
+        }
+
+        let damageToApply = proj.damage;
+        if (attackerLegendaries.has('Zephyr Bow')) {
+          damageToApply = Math.round(damageToApply * 1.25);
+          // Knockback target
+          const angle = Math.atan2(target.posY - proj.startY, target.posX - proj.startX);
+          const pushDist = 12;
+          const testX = target.posX + Math.cos(angle) * pushDist;
+          const testY = target.posY + Math.sin(angle) * pushDist;
+          const testGX = Math.floor(testX / tileSize);
+          const testGY = Math.floor(testY / tileSize);
+          if (grid[testGY]?.[testGX] === 0) {
+            target.posX = testX;
+            target.posY = testY;
+            target.gridX = testGX;
+            target.gridY = testGY;
+          }
+        }
+
+        const isInvuln = !!target.legDivineBulwarkActive;
+        if (isInvuln) {
+          proj.isMitigated = true;
+          damageToApply = 0;
+        }
+
+        const oldHp = target.hp;
+        target.hp = Math.max(target.hp - damageToApply, 0);
+        const dmgTaken = oldHp - target.hp;
+
+        if (dmgTaken > 0) {
+          if (attackerLegendaries.has('Maelstrom Staff')) {
+            const chainTargets = entities.filter(e => !e.isDead && e.id !== target.id && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot' && Math.hypot(e.posX - target.posX, e.posY - target.posY) <= 3.5 * tileSize).slice(0, 2);
+            chainTargets.forEach(ct => {
+              ct.hp = Math.max(0, ct.hp - 10);
+              visualEffectsRef.current.push({
+                type: 'lightning',
+                x1: target.posX,
+                y1: target.posY,
+                x2: ct.posX,
+                y2: ct.posY,
+                color: '#22d3ee',
+                life: 0.2,
+                maxLife: 0.2
+              });
+              floatingTextsRef.current.push({
+                text: `-10 (Chain)`,
+                x: ct.posX,
+                y: ct.posY - 10,
+                color: '#22d3ee',
+                life: 1.0
+              });
+              if (ct.hp <= 0) {
+                ct.isDead = true;
+                setCombatLog(log => [...log, `💀 ${ct.name} was zapped by Maelstrom.`].slice(-40));
+              }
+            });
+          }
+        }
+
+        if (target.hp <= 0 && dmgTaken > 0) {
+          if (attackerLegendaries.has("Gravekeeper's Scythe") && attacker) {
+            const heal = Math.round(attacker.maxHp * 0.10);
+            attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+            if (run.livingSquad[attacker.id]) {
+              run.livingSquad[attacker.id].hp = attacker.hp;
+            }
+            floatingTextsRef.current.push({
+              text: `+${heal} (Soul Feast)`,
+              x: attacker.posX,
+              y: attacker.posY - 12,
+              color: '#a855f7',
+              life: 1.2
+            });
+            visualEffectsRef.current.push({
+              type: 'ghost',
+              x1: target.posX,
+              y1: target.posY,
+              x2: attacker.posX,
+              y2: attacker.posY,
+              color: '#a855f7',
+              life: 0.4,
+              maxLife: 0.4
+            });
+          }
+        }
+
+        if (dmgTaken > 0 && heroTypes.has(target.type)) {
+          const heroRec = roster.find(r => r.character_id === target.id);
+          if (heroRec && heroRec.equipment) {
+            const equippedLegendaries = new Set<string>();
+            for (const slot in heroRec.equipment) {
+              const item = heroRec.equipment[slot as EquipmentSlot];
+              if (item && item.rarity === 'Legendary') {
+                equippedLegendaries.add(item.name);
+              }
+            }
+            if (equippedLegendaries.has('Phoenix Rebirth Ring') && Math.random() < 0.25) {
+              entities.forEach(e => {
+                if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+                  const dist = Math.hypot(e.posX - target.posX, e.posY - target.posY);
+                  if (dist <= 2.0 * tileSize) {
+                    e.hp = Math.max(0, e.hp - 15);
+                    floatingTextsRef.current.push({
+                      text: `-15 (Phoenix Burst)`,
+                      x: e.posX,
+                      y: e.posY - 12,
+                      color: '#f97316',
+                      life: 1.0
+                    });
+                    if (e.hp <= 0) {
+                      e.isDead = true;
+                      setCombatLog(log => [...log, `💀 ${e.name} fell to Phoenix Rebirth Ring.`].slice(-40));
+                    }
+                  }
+                }
+              });
+              visualEffectsRef.current.push({
+                type: 'nova',
+                x1: target.posX,
+                y1: target.posY,
+                color: '#f97316',
+                size: 2.0 * tileSize,
+                life: 0.3,
+                maxLife: 0.3
+              });
+            }
+
+            if (equippedLegendaries.has('Volcanic Cuirass')) {
+              const attackerEnt = entities.find(e => e.id === proj.attackerId && !e.isDead);
+              if (attackerEnt && !heroTypes.has(attackerEnt.type) && attackerEnt.type !== 'chest' && attackerEnt.type !== 'cage' && attackerEnt.type !== 'portal' && attackerEnt.type !== 'item_loot') {
+                attackerEnt.hp = Math.max(0, attackerEnt.hp - 12);
+                floatingTextsRef.current.push({
+                  text: `-12 (Lava Burst)`,
+                  x: attackerEnt.posX,
+                  y: attackerEnt.posY - 12,
+                  color: '#ef4444',
+                  life: 1.0
+                });
+                visualEffectsRef.current.push({
+                  type: 'nova',
+                  x1: target.posX,
+                  y1: target.posY,
+                  color: '#ef4444',
+                  size: 40,
+                  life: 0.2,
+                  maxLife: 0.2
+                });
+                if (attackerEnt.hp <= 0) {
+                  attackerEnt.isDead = true;
+                  setCombatLog(log => [...log, `💀 ${attackerEnt.name} was melted by Volcanic Cuirass.`].slice(-40));
+                }
+              }
+            }
+          }
+        }
+
+        // Fire Armor synergy: enemy projectile hits warrior, attacker takes fire damage back
+        if (target.type === 'warrior') {
+          const attacker = entitiesRef.current.find(e => e.id === proj.attackerId && !e.isDead);
+          const isAttackerHostile = attacker && !heroTypes.has(attacker.type) && attacker.type !== 'chest' && attacker.type !== 'cage' && attacker.type !== 'portal' && attacker.type !== 'item_loot';
+          if (isAttackerHostile) {
+            const fireArmorLevel = (run.selectedPowerups ?? []).filter(p => p === 'Fire Armor').length;
+            if (fireArmorLevel > 0) {
+              const retDmg = 15 + 10 * (fireArmorLevel - 1);
+              attacker.hp = Math.max(0, attacker.hp - retDmg);
+
+              // Floating text on the attacker
+              floatingTextsRef.current.push({
+                text: `-${retDmg} (Fire Armor)`,
+                x: attacker.posX,
+                y: attacker.posY - 12,
+                color: '#ff6a00',
+                life: 1.0
+              });
+
+              // Fire particles on the attacker
+              for (let k = 0; k < 4; k++) {
+                particlesRef.current.push({
+                  x: attacker.posX,
+                  y: attacker.posY,
+                  vx: (Math.random() - 0.5) * 50,
+                  vy: (Math.random() - 0.5) * 50,
+                  color: '#f97316',
+                  size: 2 + Math.random() * 2,
+                  life: 0.4
+                });
+              }
+
+              if (attacker.hp <= 0) {
+                attacker.isDead = true;
+                setCombatLog(log => [...log, `💀 ${attacker.name} was consumed by Fire Armor.`].slice(-40));
+              }
+            }
+          }
+        }
 
         // Floating text at impact
         floatingTextsRef.current.push({
@@ -1876,7 +2482,15 @@ export const CombatSimulation: React.FC = () => {
                 }
               }
             }
-            const weaponAtkSpeed = Math.max(combinedAtkSpeed, 0.5);
+            let weaponAtkSpeed = Math.max(combinedAtkSpeed, 0.5);
+            if (heroRec && heroRec.equipment) {
+              const hasBloodrage = Object.values(heroRec.equipment).some(item => item?.name === 'Bloodrage Cleaver');
+              if (hasBloodrage) {
+                const hpPct = ent.hp / ent.maxHp;
+                const bonusAtkSpeed = 0.50 * (1 - hpPct);
+                weaponAtkSpeed *= (1 + bonusAtkSpeed);
+              }
+            }
 
             // Sum attack cooldown reduction from all equipped items
             let atkCdReduction = 0;
@@ -1890,9 +2504,18 @@ export const CombatSimulation: React.FC = () => {
 
             // Count stacks of Double Shot (diminishing returns, capped at 75% reduction)
             const doubleShotStacks = run.selectedPowerups?.filter(p => p === 'Double Shot').length ?? 0;
-            const atkCooldownMult = ent.type === 'ranger'
-              ? Math.max(0.25, Math.pow(0.70, doubleShotStacks))
-              : 1.0;
+            let atkCooldownMult = 1.0;
+            if (ent.type === 'ranger') {
+              atkCooldownMult = Math.max(0.25, Math.pow(0.70, doubleShotStacks));
+            } else if (ent.type === 'wizard') {
+              const quickBurnLevel = run.selectedPowerups?.filter(p => p === 'Quick Burn').length ?? 0;
+              if (quickBurnLevel > 0) {
+                const rangerReduction = 1 - Math.max(0.25, Math.pow(0.70, doubleShotStacks));
+                const wizardBenefitRatio = 0.50 + 0.10 * (quickBurnLevel - 1);
+                const wizardReduction = rangerReduction * wizardBenefitRatio;
+                atkCooldownMult = 1 - wizardReduction;
+              }
+            }
             ent.attackCooldown = (baseAtkCooldown / weaponAtkSpeed) * atkCooldownMult * (1 - atkCdReduction);
 
             // Handle chest unlock / cage breaking
@@ -2002,9 +2625,292 @@ export const CombatSimulation: React.FC = () => {
                 isPoisoned: ent.type === 'ranger' && (run.selectedPowerups ?? []).includes('Poison Arrow'),
                 poisonLevel: ent.type === 'ranger' ? (run.selectedPowerups ?? []).filter(p => p === 'Poison Arrow').length : 0
               });
+
+              // Marked for Death synergy: Ranger attacks split to all marked targets
+              if (ent.type === 'ranger' && (run.selectedPowerups ?? []).includes('Marked for Death')) {
+                entitiesRef.current.forEach(other => {
+                  if (other.id !== target.id && !other.isDead && other.isMarked) {
+                    const isOtherHero = heroTypes.has(other.type);
+                    if (!isOtherHero && other.type !== 'chest' && other.type !== 'cage' && other.type !== 'portal' && other.type !== 'item_loot') {
+                      projectilesRef.current.push({
+                        x: ent.posX,
+                        y: ent.posY,
+                        startX: ent.posX,
+                        startY: ent.posY,
+                        attackerId: ent.id,
+                        targetId: other.id,
+                        speed: pSpeed,
+                        damage: dmg,
+                        isMitigated: false,
+                        color: '#d946ef', // Fuchsia
+                        size: 2.2,
+                        trail: [],
+                        life: 2.0,
+                        isAoE: false,
+                        isPoisoned: (run.selectedPowerups ?? []).includes('Poison Arrow'),
+                        poisonLevel: (run.selectedPowerups ?? []).filter(p => p === 'Poison Arrow').length
+                      });
+                    }
+                  }
+                });
+              }
             } else {
               // --- Melee attack: apply damage instantly + slash VFX ---
-              target.hp = Math.max(target.hp - dmg, 0);
+              let finalDmg = dmg;
+              const attackerHero = heroTypes.has(ent.type) ? roster.find(r => r.character_id === ent.id) : null;
+              if (attackerHero && attackerHero.equipment) {
+                const equippedLegendaries = new Set<string>();
+                for (const slot in attackerHero.equipment) {
+                  const item = attackerHero.equipment[slot as EquipmentSlot];
+                  if (item && item.rarity === 'Legendary') equippedLegendaries.add(item.name);
+                }
+                
+                if (equippedLegendaries.has('Void Blade') && Math.random() < 0.20) {
+                  finalDmg *= 2;
+                  floatingTextsRef.current.push({
+                    text: `Void Crit!`,
+                    x: target.posX,
+                    y: target.posY - 16,
+                    color: '#c084fc',
+                    life: 1.0
+                  });
+                  visualEffectsRef.current.push({
+                    type: 'ghost',
+                    x1: ent.posX,
+                    y1: ent.posY,
+                    x2: target.posX,
+                    y2: target.posY,
+                    color: '#a855f7',
+                    life: 0.2,
+                    maxLife: 0.2
+                  });
+                }
+                if (equippedLegendaries.has('Glinting Goggles')) {
+                  finalDmg += 5;
+                  visualEffectsRef.current.push({
+                    type: 'laser',
+                    x1: ent.posX,
+                    y1: ent.posY,
+                    x2: target.posX,
+                    y2: target.posY,
+                    color: '#ef4444',
+                    life: 0.15,
+                    maxLife: 0.15
+                  });
+                }
+                if (equippedLegendaries.has("Titan's Grips")) {
+                  // Splash 50% damage to other enemies in 1.5 tiles
+                  entities.forEach(other => {
+                    if (other.id === target.id || other.isDead) return;
+                    if (heroTypes.has(other.type)) return; // Only damage enemies
+                    if (other.type === 'chest' || other.type === 'cage' || other.type === 'portal' || other.type === 'item_loot') return;
+                    
+                    const dist = Math.hypot(other.posX - target.posX, other.posY - target.posY);
+                    if (dist <= 1.5 * tileSize) {
+                      const splash = Math.round(finalDmg * 0.5);
+                      other.hp = Math.max(0, other.hp - splash);
+                      floatingTextsRef.current.push({
+                        text: `-${splash}`,
+                        x: other.posX,
+                        y: other.posY - 8,
+                        color: '#fbbf24',
+                        life: 1.0
+                      });
+                      if (other.hp <= 0) {
+                        other.isDead = true;
+                        setCombatLog(log => [...log, `💀 ${other.name} was crushed by Seismic Slam.`].slice(-40));
+                      }
+                    }
+                  });
+                  visualEffectsRef.current.push({
+                    type: 'shockwave',
+                    x1: target.posX,
+                    y1: target.posY,
+                    color: '#a1a1aa',
+                    size: 1.5 * tileSize,
+                    life: 0.25,
+                    maxLife: 0.25
+                  });
+                }
+                if (equippedLegendaries.has('Death-Touch Grips')) {
+                  // Apply 2 poison stacks
+                  const existing = poisonStacksRef.current.get(target.id);
+                  const newStacks = existing ? Math.min(existing.stacks + 2, 5) : 2;
+                  poisonStacksRef.current.set(target.id, {
+                    stacks: newStacks,
+                    timer: existing?.timer ?? 0,
+                    level: 2
+                  });
+                  floatingTextsRef.current.push({
+                    text: `☠ Poison (${newStacks})`,
+                    x: target.posX,
+                    y: target.posY - 16,
+                    color: '#22c55e',
+                    life: 1.2
+                  });
+                }
+              }
+
+              // Apply Divine Bulwark invuln
+              const isInvuln = !!target.legDivineBulwarkActive;
+              const dmgApplied = isInvuln ? 0 : finalDmg;
+              const oldHp = target.hp;
+              target.hp = Math.max(target.hp - dmgApplied, 0);
+              const dmgTaken = oldHp - target.hp;
+
+              if (isInvuln) {
+                floatingTextsRef.current.push({
+                  text: `Blocked!`,
+                  x: target.posX,
+                  y: target.posY - 8,
+                  color: '#60a5fa',
+                  life: 1.0
+                });
+              }
+
+              // Gravekeeper's Scythe heal on wielder
+              if (target.hp <= 0 && dmgTaken > 0) {
+                if (attackerHero && attackerHero.equipment) {
+                  const equippedLegendaries = new Set<string>();
+                  for (const slot in attackerHero.equipment) {
+                    const item = attackerHero.equipment[slot as EquipmentSlot];
+                    if (item && item.rarity === 'Legendary') equippedLegendaries.add(item.name);
+                  }
+                  if (equippedLegendaries.has("Gravekeeper's Scythe") && ent) {
+                    const heal = Math.round(ent.maxHp * 0.10);
+                    ent.hp = Math.min(ent.maxHp, ent.hp + heal);
+                    if (run.livingSquad[ent.id]) {
+                      run.livingSquad[ent.id].hp = ent.hp;
+                    }
+                    floatingTextsRef.current.push({
+                      text: `+${heal} (Soul Feast)`,
+                      x: ent.posX,
+                      y: ent.posY - 12,
+                      color: '#a855f7',
+                      life: 1.2
+                    });
+                    visualEffectsRef.current.push({
+                      type: 'ghost',
+                      x1: target.posX,
+                      y1: target.posY,
+                      x2: ent.posX,
+                      y2: ent.posY,
+                      color: '#a855f7',
+                      life: 0.4,
+                      maxLife: 0.4
+                    });
+                  }
+                }
+              }
+
+              // Process on-hit triggers for the target taking damage
+              if (dmgTaken > 0 && heroTypes.has(target.type)) {
+                const targetHero = roster.find(r => r.character_id === target.id);
+                if (targetHero && targetHero.equipment) {
+                  const targetLegendaries = new Set<string>();
+                  for (const slot in targetHero.equipment) {
+                    const item = targetHero.equipment[slot as EquipmentSlot];
+                    if (item && item.rarity === 'Legendary') targetLegendaries.add(item.name);
+                  }
+                  
+                  if (targetLegendaries.has('Phoenix Rebirth Ring') && Math.random() < 0.25) {
+                    entities.forEach(e => {
+                      if (!e.isDead && !heroTypes.has(e.type) && e.type !== 'chest' && e.type !== 'cage' && e.type !== 'portal' && e.type !== 'item_loot') {
+                        const dist = Math.hypot(e.posX - target.posX, e.posY - target.posY);
+                        if (dist <= 2.0 * tileSize) {
+                          e.hp = Math.max(0, e.hp - 15);
+                          floatingTextsRef.current.push({
+                            text: `-15 (Phoenix Burst)`,
+                            x: e.posX,
+                            y: e.posY - 12,
+                            color: '#f97316',
+                            life: 1.0
+                          });
+                          if (e.hp <= 0) {
+                            e.isDead = true;
+                            setCombatLog(log => [...log, `💀 ${e.name} fell to Phoenix Rebirth Ring.`].slice(-40));
+                          }
+                        }
+                      }
+                    });
+                    visualEffectsRef.current.push({
+                      type: 'nova',
+                      x1: target.posX,
+                      y1: target.posY,
+                      color: '#f97316',
+                      size: 2.0 * tileSize,
+                      life: 0.3,
+                      maxLife: 0.3
+                    });
+                  }
+
+                  if (targetLegendaries.has('Volcanic Cuirass')) {
+                    if (ent && !ent.isDead && !heroTypes.has(ent.type)) {
+                      ent.hp = Math.max(0, ent.hp - 12);
+                      floatingTextsRef.current.push({
+                        text: `-12 (Lava Burst)`,
+                        x: ent.posX,
+                        y: ent.posY - 12,
+                        color: '#ef4444',
+                        life: 1.0
+                      });
+                      visualEffectsRef.current.push({
+                        type: 'nova',
+                        x1: target.posX,
+                        y1: target.posY,
+                        color: '#ef4444',
+                        size: 40,
+                        life: 0.2,
+                        maxLife: 0.2
+                      });
+                      if (ent.hp <= 0) {
+                        ent.isDead = true;
+                        setCombatLog(log => [...log, `💀 ${ent.name} was melted by Volcanic Cuirass.`].slice(-40));
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (ent.type === 'warrior' && (run.selectedPowerups ?? []).includes('Marked for Death')) {
+                target.isMarked = true;
+              }
+
+              // Fire Armor synergy: enemy hits warrior, takes fire damage back
+              if (target.type === 'warrior' && isHostile) {
+                const fireArmorLevel = (run.selectedPowerups ?? []).filter(p => p === 'Fire Armor').length;
+                if (fireArmorLevel > 0) {
+                  const retDmg = 15 + 10 * (fireArmorLevel - 1);
+                  ent.hp = Math.max(0, ent.hp - retDmg);
+                  
+                  // Floating text on the attacker
+                  floatingTextsRef.current.push({
+                    text: `-${retDmg} (Fire Armor)`,
+                    x: ent.posX,
+                    y: ent.posY - 12,
+                    color: '#ff6a00',
+                    life: 1.0
+                  });
+
+                  // Add some fire particles on the attacker
+                  for (let k = 0; k < 4; k++) {
+                    particlesRef.current.push({
+                      x: ent.posX,
+                      y: ent.posY,
+                      vx: (Math.random() - 0.5) * 50,
+                      vy: (Math.random() - 0.5) * 50,
+                      color: '#f97316',
+                      size: 2 + Math.random() * 2,
+                      life: 0.4
+                    });
+                  }
+
+                  if (ent.hp <= 0) {
+                    ent.isDead = true;
+                    setCombatLog(log => [...log, `💀 ${ent.name} was consumed by Fire Armor.`].slice(-40));
+                  }
+                }
+              }
 
               floatingTextsRef.current.push({
                 text: isMitigated ? `Blocked!` : `-${dmg}`,
@@ -2045,6 +2951,10 @@ export const CombatSimulation: React.FC = () => {
                     const secondaryDmg = Math.round(dmg * 0.15);
                     if (secondaryDmg > 0) {
                       other.hp = Math.max(other.hp - secondaryDmg, 0);
+
+                      if ((run.selectedPowerups ?? []).includes('Marked for Death')) {
+                        other.isMarked = true;
+                      }
 
                       floatingTextsRef.current.push({
                         text: `-${secondaryDmg}`,
@@ -2236,6 +3146,7 @@ export const CombatSimulation: React.FC = () => {
         // 4. Movement Logic (independent of whether we just attacked, supports kiting!)
         let kited = false;
         const isRangedHero = ent.type === 'ranger' || ent.type === 'wizard';
+        const moveSpeed = ent.speed * (ent.frostSlowed ? 0.75 : 1.0);
 
         // Archer enemies kite away from heroes when they close into melee range
         if (isArcher && target) {
@@ -2246,8 +3157,8 @@ export const CombatSimulation: React.FC = () => {
           if (adist < 3.0) {
             const mdx = -(adx / (adist * tileSize));
             const mdy = -(ady / (adist * tileSize));
-            const nextX = ent.posX + mdx * ent.speed * tileSize * dt;
-            const nextY = ent.posY + mdy * ent.speed * tileSize * dt;
+            const nextX = ent.posX + mdx * moveSpeed * tileSize * dt;
+            const nextY = ent.posY + mdy * moveSpeed * tileSize * dt;
             const nextGridX = Math.floor(nextX / tileSize);
             const nextGridY = Math.floor(nextY / tileSize);
             if (grid[nextGridY]?.[nextGridX] === 0) {
@@ -2347,11 +3258,11 @@ export const CombatSimulation: React.FC = () => {
 
               if (stepDist > 1.0) {
                 // Move away (Ranger / Wizard speed mult reduced by 50% for balance)
-                const nextX = ent.posX + (mdx / stepDist) * ent.speed * 0.375 * tileSize * dt;
-                const nextY = ent.posY + (mdy / stepDist) * ent.speed * 0.375 * tileSize * dt;
+                const nextX = ent.posX + (mdx / stepDist) * moveSpeed * 0.375 * tileSize * dt;
+                const nextY = ent.posY + (mdy / stepDist) * moveSpeed * 0.375 * tileSize * dt;
                 const nextGridX = Math.floor(nextX / tileSize);
                 const nextGridY = Math.floor(nextY / tileSize);
-
+ 
                 if (grid[nextGridY]?.[nextGridX] === 0) {
                   ent.posX = nextX;
                   ent.posY = nextY;
@@ -2363,11 +3274,11 @@ export const CombatSimulation: React.FC = () => {
             }
           }
         }
-
+ 
         if (!kited && tileDist > effectiveRange) {
           // Normal pathfind movement
           let moveTarget = target;
-
+ 
           // If in combat (target is an enemy) but target is out of our attack range,
           // and we are too far ahead of the anchor, move towards the anchor to draw the enemies back!
           const teammates = heroes.filter(h => h.id !== ent.id);
@@ -2378,34 +3289,34 @@ export const CombatSimulation: React.FC = () => {
               anchor = teammates.reduce((furthest, curr) => curr.posX < furthest.posX ? curr : furthest, teammates[0]);
             }
           }
-
-
+ 
+ 
           if (ent.groupingMode && anchor && target.type !== 'portal' && target.type !== 'chest' && target.type !== 'cage') {
             if (tileDist > ent.attackRange) {
               moveTarget = anchor;
             }
           }
-
+ 
           const path = findPath({ x: ent.gridX, y: ent.gridY }, { x: moveTarget.gridX, y: moveTarget.gridY });
           let destX = moveTarget.posX;
           let destY = moveTarget.posY;
-
+ 
           if (path.length > 1) {
             const nextStep = path[1];
             destX = nextStep.x * tileSize + tileSize / 2;
             destY = nextStep.y * tileSize + tileSize / 2;
           }
-
+ 
           const mdx = destX - ent.posX;
           const mdy = destY - ent.posY;
           const stepDist = Math.sqrt(mdx * mdx + mdy * mdy);
-
+ 
           if (stepDist > 1.5) {
-            const nextX = ent.posX + (mdx / stepDist) * ent.speed * tileSize * dt;
-            const nextY = ent.posY + (mdy / stepDist) * ent.speed * tileSize * dt;
+            const nextX = ent.posX + (mdx / stepDist) * moveSpeed * tileSize * dt;
+            const nextY = ent.posY + (mdy / stepDist) * moveSpeed * tileSize * dt;
             const nextGridX = Math.floor(nextX / tileSize);
             const nextGridY = Math.floor(nextY / tileSize);
-
+ 
             if (grid[nextGridY]?.[nextGridX] === 0) {
               ent.posX = nextX;
               ent.posY = nextY;
@@ -2413,13 +3324,13 @@ export const CombatSimulation: React.FC = () => {
               ent.gridY = nextGridY;
             } else {
               // Sliding logic: try moving along X or Y individually if diagonal/direct path is blocked by a wall
-              const nextXOnly = ent.posX + (mdx / stepDist) * ent.speed * tileSize * dt;
+              const nextXOnly = ent.posX + (mdx / stepDist) * moveSpeed * tileSize * dt;
               const nextGridXOnly = Math.floor(nextXOnly / tileSize);
               if (grid[ent.gridY]?.[nextGridXOnly] === 0) {
                 ent.posX = nextXOnly;
                 ent.gridX = nextGridXOnly;
               } else {
-                const nextYOnly = ent.posY + (mdy / stepDist) * ent.speed * tileSize * dt;
+                const nextYOnly = ent.posY + (mdy / stepDist) * moveSpeed * tileSize * dt;
                 const nextGridYOnly = Math.floor(nextYOnly / tileSize);
                 if (grid[nextGridYOnly]?.[ent.gridX] === 0) {
                   ent.posY = nextYOnly;
@@ -2620,6 +3531,135 @@ export const CombatSimulation: React.FC = () => {
         }
       }
 
+      // Draw fuchsia dashed target marker for Marked for Death
+      if (ent.isMarked && !ent.isDead) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, radius + 4, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#d946ef'; // Fuchsia
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw Fire Armor synergy visual effect around Warrior
+      if (ent.type === 'warrior' && !ent.isDead) {
+        const fireArmorLevel = (activeRun?.selectedPowerups ?? []).filter(p => p === 'Fire Armor').length;
+        if (fireArmorLevel > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(drawX, drawY, radius + 4, 0, 2 * Math.PI);
+          ctx.strokeStyle = '#ef4444'; // Bright orange-red
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          
+          ctx.beginPath();
+          ctx.arc(drawX, drawY, radius + 6, 0, 2 * Math.PI);
+          ctx.strokeStyle = '#f97316'; // Orange
+          ctx.lineWidth = 1.0;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+ 
+      // Draw unique visual indicators around heroes wearing legendary gear
+      if (['ranger','warrior','wizard','rogue','paladin','druid','necromancer'].includes(ent.type) && !ent.isDead) {
+        const hero = roster.find(h => h.character_id === ent.id);
+        if (hero && hero.equipment) {
+          const equippedLegendaries = new Set<string>();
+          for (const slot in hero.equipment) {
+            const item = hero.equipment[slot as EquipmentSlot];
+            if (item && item.rarity === 'Legendary') {
+              equippedLegendaries.add(item.name);
+            }
+          }
+
+          // 1. Aegis of the Sun (Rotating golden shield/aura around wielder)
+          if (equippedLegendaries.has('Aegis of the Sun')) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, radius + 5, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.4)';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+            
+            const angle = (Date.now() / 350) % (Math.PI * 2);
+            const dotX = drawX + Math.cos(angle) * (radius + 5);
+            const dotY = drawY + Math.sin(angle) * (radius + 5);
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 2.5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // 2. Cindermaw's Guard (Swirling fire shield outline)
+          if (equippedLegendaries.has("Cindermaw's Guard")) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, radius + 3, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            
+            const angle1 = (Date.now() / 250) % (Math.PI * 2);
+            const angle2 = angle1 + Math.PI;
+            ctx.beginPath();
+            ctx.arc(drawX + Math.cos(angle1) * (radius + 3), drawY + Math.sin(angle1) * (radius + 3), 2, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ef4444';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(drawX + Math.cos(angle2) * (radius + 3), drawY + Math.sin(angle2) * (radius + 3), 2, 0, 2 * Math.PI);
+            ctx.fillStyle = '#f97316';
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // 6. Will of the Mountain (3 rotating brown stones)
+          if (equippedLegendaries.has('Will of the Mountain')) {
+            ctx.save();
+            const angleSpeed = Date.now() / 500;
+            for (let i = 0; i < 3; i++) {
+              const angle = angleSpeed + (i * Math.PI * 2 / 3);
+              const stoneX = drawX + Math.cos(angle) * (radius + 7);
+              const stoneY = drawY + Math.sin(angle) * (radius + 7);
+              ctx.beginPath();
+              ctx.arc(stoneX, stoneY, 2.2, 0, 2 * Math.PI);
+              ctx.fillStyle = '#78350f'; // Brown stone
+              ctx.fill();
+              ctx.strokeStyle = '#451a03';
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+
+          // 12. Divine Bulwark Bubble
+          if (equippedLegendaries.has('Divine Bulwark') && ent.legDivineBulwarkActive) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, radius + 4, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#eab308'; // Bright yellow
+            ctx.lineWidth = 2.0;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.15)';
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // 15. Frostmourne's Edge (Frost ring under hero)
+          if (equippedLegendaries.has("Frostmourne's Edge")) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, radius + 6, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.4)'; // Sky blue
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+
       // Draw health bar
       const barW = ent.type === 'boss' ? 44 : 22;
       const barH = 3.5;
@@ -2716,11 +3756,165 @@ export const CombatSimulation: React.FC = () => {
       ctx.fill();
     });
 
+    // Draw Sunfire Sabatons Magma Trails
+    sunfireTrailsRef.current.forEach(trail => {
+      const tx = trail.x - camX;
+      const ty = trail.y - camY;
+      const alpha = Math.max(0.1, trail.life / 3.0);
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(tx, ty, 6 + Math.sin(trail.life * 4) * 2, 0, 2 * Math.PI);
+      ctx.fillStyle = '#f97316';
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(tx, ty, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = '#facc15';
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Draw Falling Stars
+    fallingStarsRef.current.forEach(star => {
+      const sx = star.x - camX;
+      const sy = star.y - camY;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - 15, sy - 30);
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(sx, sy, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#facc15';
+      ctx.fill();
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Draw Custom Visual Effects
+    visualEffectsRef.current.forEach(fx => {
+      const x1 = fx.x1 - camX;
+      const y1 = fx.y1 - camY;
+      
+      ctx.save();
+      if (fx.type === 'lightning' && fx.x2 !== undefined && fx.y2 !== undefined) {
+        const x2 = fx.x2 - camX;
+        const y2 = fx.y2 - camY;
+        const alpha = Math.max(0.1, fx.life / fx.maxLife);
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        
+        const dist = Math.hypot(x2 - x1, y2 - y1);
+        const steps = Math.floor(dist / 12);
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          const px = x1 + (x2 - x1) * t + (Math.random() - 0.5) * 8;
+          const py = y1 + (y2 - y1) * t + (Math.random() - 0.5) * 8;
+          ctx.lineTo(px, py);
+        }
+        ctx.lineTo(x2, y2);
+        
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = alpha;
+        ctx.stroke();
+        
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = fx.color;
+        ctx.globalAlpha = alpha * 0.45;
+        ctx.stroke();
+      } else if (fx.type === 'laser' && fx.x2 !== undefined && fx.y2 !== undefined) {
+        const x2 = fx.x2 - camX;
+        const y2 = fx.y2 - camY;
+        const alpha = Math.max(0.1, fx.life / fx.maxLife);
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = alpha;
+        ctx.stroke();
+        
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = fx.color;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.stroke();
+      } else if (fx.type === 'nova' && fx.size) {
+        const alpha = Math.max(0.1, fx.life / fx.maxLife);
+        const currentSize = fx.size * (1 - fx.life / fx.maxLife);
+        
+        ctx.beginPath();
+        ctx.arc(x1, y1, currentSize, 0, 2 * Math.PI);
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.arc(x1, y1, currentSize, 0, 2 * Math.PI);
+        ctx.fillStyle = fx.color;
+        ctx.globalAlpha = alpha * 0.2;
+        ctx.fill();
+      } else if (fx.type === 'shockwave' && fx.size) {
+        const alpha = Math.max(0.1, fx.life / fx.maxLife);
+        const currentSize = fx.size * (1 - fx.life / fx.maxLife);
+        
+        ctx.beginPath();
+        ctx.arc(x1, y1, currentSize, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#d4d4d8';
+        ctx.lineWidth = 2.0;
+        ctx.globalAlpha = alpha * 0.6;
+        ctx.stroke();
+      } else if (fx.type === 'leaf' && fx.x2 !== undefined && fx.y2 !== undefined) {
+        const x2 = fx.x2 - camX;
+        const y2 = fx.y2 - camY;
+        const progress = 1 - fx.life / fx.maxLife;
+        const px = x1 + (x2 - x1) * progress;
+        const py = y1 + (y2 - y1) * progress + Math.sin(progress * Math.PI * 2) * 15;
+        
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+      } else if (fx.type === 'ghost' && fx.x2 !== undefined && fx.y2 !== undefined) {
+        const x2 = fx.x2 - camX;
+        const y2 = fx.y2 - camY;
+        const progress = 1 - fx.life / fx.maxLife;
+        const px = x1 + (x2 - x1) * progress;
+        const py = y1 + (y2 - y1) * progress;
+        
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#a855f7';
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(px - (x2 - x1) * 0.05, py - (y2 - y1) * 0.05, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#c084fc';
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+
     // Draw floating texts with offset
     floatingTextsRef.current.forEach(t => {
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillStyle = t.color;
+      ctx.font = 'bold 13px sans-serif';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
       ctx.textAlign = 'center';
+      ctx.strokeText(t.text, t.x - camX, t.y - camY);
+      ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x - camX, t.y - camY);
     });
 
@@ -2811,6 +4005,28 @@ export const CombatSimulation: React.FC = () => {
     setRunStarted(true);
     setCombatLog(log => [...log, `Squad coordinates locked. Commencing exploration.`]);
   };
+
+  useEffect(() => {
+    if (runStarted || !isAutoCampActive || !activeRun || showReviveModal) return;
+
+    let timeoutId: number | null = null;
+
+    if (healedHeroes.length === 0) {
+      timeoutId = window.setTimeout(() => {
+        handleHealAll();
+      }, 1000);
+    } else {
+      timeoutId = window.setTimeout(() => {
+        handleStartSimulation();
+      }, 1000);
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [runStarted, isAutoCampActive, healedHeroes, activeRun, showReviveModal]);
 
   // Phase sequencer: 1 → animate for 1.5s → phase 2 (linger, button)
   useEffect(() => {
@@ -2938,6 +4154,16 @@ export const CombatSimulation: React.FC = () => {
 
               {/* Deploy + Exit buttons underneath fire pit */}
               <div className="campfire-deploy-wrapper">
+                <label className={`auto-camp-toggle-container ${isAutoCampActive ? 'active' : ''}`}>
+                  <input
+                    type="checkbox"
+                    className="auto-camp-checkbox"
+                    checked={isAutoCampActive}
+                    onChange={(e) => setIsAutoCampActive(e.target.checked)}
+                  />
+                  <span>Auto-Heal & Deploy</span>
+                </label>
+
                 <button className="deploy-btn-pronounced wide-deploy" onClick={handleStartSimulation}>
                   Deploy Squad <Compass size={14} className="inline ml-1" />
                 </button>
@@ -3108,10 +4334,11 @@ export const CombatSimulation: React.FC = () => {
                     ✦ Active Powerups
                   </span>
                   {Object.entries(stacked).map(([powerup, count], idx) => {
-                    const isDefense = powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron');
-                    const isAttack = powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade');
-                    const isMagic = powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike');
-                    const isHeal = powerup.includes('Rejuvenate') || powerup.includes('Second Wind');
+                    const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
+                    const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block'));
+                    const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge'));
+                    const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike'));
+                    const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind'));
 
                     const baseDesc = powerupDescriptions[powerup] || 'Active team enhancement';
                     const tooltipText = count > 1 ? `${baseDesc} (${count}x total)` : baseDesc;
@@ -3121,11 +4348,12 @@ export const CombatSimulation: React.FC = () => {
                         key={`${powerup}-${idx}`} 
                         className="dungeon-powerup-item"
                       >
+                        {isSynergy && <Layers className="text-fuchsia-400" size={13} />}
                         {isDefense && <Shield className="text-blue-400" size={13} />}
                         {isAttack && <Sword className="text-green-400" size={13} />}
                         {isMagic && <Flame className="text-purple-400" size={13} />}
                         {isHeal && <Heart className="text-red-400" size={13} />}
-                        {!isDefense && !isAttack && !isMagic && !isHeal && <Sparkles className="text-amber-400" size={13} />}
+                        {!isSynergy && !isDefense && !isAttack && !isMagic && !isHeal && <Sparkles className="text-amber-400" size={13} />}
                         <span className="powerup-name-text">{powerup}</span>
                         {count > 1 && <span className="powerup-stack-badge">x{count}</span>}
                         

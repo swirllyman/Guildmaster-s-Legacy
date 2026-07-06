@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import type { EquipmentSlot, Item } from '../../types/game';
 import { ItemTooltip } from '../Hub/ItemTooltip';
@@ -41,6 +41,13 @@ export const CampIntermission: React.FC = () => {
   const [healedHeroes, setHealedHeroes] = useState<string[]>([]);
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+  const [isAutoCampActive, setIsAutoCampActive] = useState<boolean>(() => {
+    return localStorage.getItem('autoCampActive') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('autoCampActive', isAutoCampActive ? 'true' : 'false');
+  }, [isAutoCampActive]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     setMouseCoords({ x: e.clientX, y: e.clientY });
@@ -86,6 +93,28 @@ export const CampIntermission: React.FC = () => {
     campReviveHero(heroId);
     setShowReviveModal(false);
   };
+
+  useEffect(() => {
+    if (!isAutoCampActive || !activeRun || showReviveModal) return;
+
+    let timeoutId: number | null = null;
+
+    if (healedHeroes.length === 0) {
+      timeoutId = window.setTimeout(() => {
+        handleHealAll();
+      }, 1000);
+    } else {
+      timeoutId = window.setTimeout(() => {
+        advanceChamber();
+      }, 1000);
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isAutoCampActive, healedHeroes, activeRun, showReviveModal]);
 
   const getSlotIcon = (slot: EquipmentSlot, isOccupied: boolean) => {
     const IconComponent = slotIcons[slot] || Shield;
@@ -204,6 +233,16 @@ export const CampIntermission: React.FC = () => {
 
             {/* Deploy/Embark button */}
             <div className="campfire-deploy-wrapper">
+              <label className={`auto-camp-toggle-container ${isAutoCampActive ? 'active' : ''}`}>
+                <input
+                  type="checkbox"
+                  className="auto-camp-checkbox"
+                  checked={isAutoCampActive}
+                  onChange={(e) => setIsAutoCampActive(e.target.checked)}
+                />
+                <span>Auto-Heal & Deploy</span>
+              </label>
+
               <button className="deploy-btn-pronounced wide-deploy" onClick={advanceChamber}>
                 Deploy Squad <Compass size={14} className="inline ml-1" />
               </button>
