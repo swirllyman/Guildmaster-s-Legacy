@@ -5013,7 +5013,7 @@ export const CombatSimulation: React.FC = () => {
               const dmgTaken = oldHp - target.hp;
 
               // Shield Slam: Warrior attacks stun targets for 1.5s per stack (bosses are immune)
-              if (ent.type === 'warrior' && !target.isDead && dmgApplied > 0 && target.type !== 'portal' && target.type !== 'item_loot' && target.type !== 'boss') {
+              if (ent.type === 'warrior' && !target.isDead && dmgApplied > 0 && target.type !== 'item_loot' && target.type !== 'boss') {
                 const shieldSlamCount = countOf('Shield Slam');
                 if (shieldSlamCount > 0) {
                   const stunDuration = 1.5 * shieldSlamCount;
