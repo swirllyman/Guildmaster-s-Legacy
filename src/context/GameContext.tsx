@@ -153,11 +153,151 @@ export const LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
     weight: 'heavy',
     stats: { hp: 20, damage: 4 },
     affixes: ['Seismic Slam: Attacks cause a shockwave dealing 50% splash damage in 1.5 tiles']
+  },
+  {
+    name: 'Shadowflame Cowl',
+    type: 'helm',
+    weight: 'light',
+    stats: { hp: 20, magic: 10 },
+    affixes: ['Void Fumes: Emit shadow flames dealing 12 void damage to 2 nearby enemies every 2s']
+  },
+  {
+    name: 'Gale-Force Leggings',
+    type: 'pants',
+    weight: 'light',
+    stats: { hp: 22, speed: 15 },
+    affixes: ['Wind Cushion: Gain +10% dodge chance; knocks back all nearby enemies every 4s']
+  },
+  {
+    name: 'Vortex Pauldrons',
+    type: 'shoulders',
+    weight: 'heavy',
+    stats: { hp: 25, armor: 4 },
+    affixes: ['Gravitational Pull: Pulls a random nearby enemy closer every 3.5s']
+  },
+  {
+    name: 'Grip of the Undead',
+    type: 'gloves',
+    weight: 'light',
+    stats: { hp: 15, damage: 3 },
+    affixes: ['Soul Harvest: Defeating an enemy summons a friendly skeleton minion']
+  },
+  {
+    name: 'Frozen Treads',
+    type: 'boots',
+    weight: 'light',
+    stats: { hp: 18, speed: 25 },
+    affixes: ['Frost Trail: Leaves ice patches on the ground that slow enemies by 40%']
+  },
+  {
+    name: 'Carapace of the Iron Core',
+    type: 'chest',
+    weight: 'heavy',
+    stats: { hp: 35, armor: 8 },
+    affixes: ['Iron Retaliation: Reflects 20% of all physical damage taken back to attacker']
+  },
+  {
+    name: 'Demon-Slayer Greatsword',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 10, hp: 15 },
+    affixes: ['Hellfire Cleave: Melee attacks deal +10 fire damage to enemies in a cone']
+  },
+  {
+    name: 'Staff of Everlasting Winter',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 6, magic: 15 },
+    affixes: ['Blizzard Core: Projectiles trigger a frost nova that slows enemies by 30%']
+  },
+  {
+    name: 'Talon Bow',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 8, critChance: 8 },
+    affixes: ['Eagle Eye: Projectiles have a 30% chance to pierce and hit enemies behind them']
+  },
+  {
+    name: 'Runic Warmace',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 9, hp: 20 },
+    affixes: ['Runic Shielding: Every third attack grants a shield that absorbs 15 damage']
+  },
+  {
+    name: 'Duskwalker Boots',
+    type: 'boots',
+    weight: 'light',
+    stats: { hp: 15, speed: 30 },
+    affixes: ['Shadow Cloak: Grants 1.5s invisibility when falling below 40% health']
+  },
+  {
+    name: 'Crown of the Mad King',
+    type: 'helm',
+    weight: 'light',
+    stats: { hp: 15, damage: 12, armor: -5 },
+    affixes: ['Anarchy Crown: Increases damage by 30% but reduces armor by 5']
+  },
+  {
+    name: 'Soul-Eater Vestment',
+    type: 'chest',
+    weight: 'light',
+    stats: { hp: 30, armor: 4 },
+    affixes: ['Soul Shield: Restores 3 HP and 1% max HP whenever an enemy dies']
+  },
+  {
+    name: 'Lightning-Rod Vambraces',
+    type: 'gloves',
+    weight: 'light',
+    stats: { hp: 20, atkCooldownReduction: 0.05 },
+    affixes: ['Static Discharge: 15% chance to shock attackers for 18 damage when hit']
+  },
+  {
+    name: 'Glacial Girdle',
+    type: 'pants',
+    weight: 'heavy',
+    stats: { hp: 30, armor: 6 },
+    affixes: ['Frigid Shell: Breaks when damaged to deal 12 frost damage and freeze enemies']
+  },
+  {
+    name: 'Onyx Bulwark',
+    type: 'shoulders',
+    weight: 'heavy',
+    stats: { hp: 25, armor: 8 },
+    affixes: ['Stonewall: Wielder cannot be knocked back or displaced']
+  },
+  {
+    name: 'Tome of Lost Souls',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 5, magic: 20 },
+    affixes: ['Ghostly Apparition: Periodically summons wisps that seek and detonate on targets']
+  },
+  {
+    name: 'Blighted Bow',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 7, atkSpeed: 1.25 },
+    affixes: ['Toxic Spread: Attacks deal 8 poison damage and spread to a nearby target']
+  },
+  {
+    name: 'Scepter of Light',
+    type: 'weapon',
+    weight: 'none',
+    stats: { damage: 6, magic: 18 },
+    affixes: ['Judgement: Calls down a beam of holy light on the highest-HP enemy every 4s']
+  },
+  {
+    name: 'Treads of the Berserker',
+    type: 'boots',
+    weight: 'light',
+    stats: { hp: 15, speed: 20 },
+    affixes: ['Furious Stride: Speed and attack speed increase per nearby enemy']
   }
 ];
 
 // Helper to generate items
-export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], allowLegendary = true): Item => {
+export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], allowLegendary = true, excludeNames?: Set<string>): Item => {
   const types: EquipmentSlot[] = ['helm', 'shoulders', 'chest', 'pants', 'boots', 'gloves', 'weapon'];
   const type = types[Math.floor(Math.random() * types.length)];
   
@@ -181,10 +321,17 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], 
     else if (roll > t.uncommon) rarity = 'Rare';
     else if (roll > t.common) rarity = 'Uncommon';
   }
-
+ 
   // Handle Legendary item from templates
   if (rarity === 'Legendary') {
-    const template = LEGENDARY_TEMPLATES[Math.floor(Math.random() * LEGENDARY_TEMPLATES.length)];
+    let availableTemplates = LEGENDARY_TEMPLATES;
+    if (excludeNames && excludeNames.size > 0) {
+      availableTemplates = LEGENDARY_TEMPLATES.filter(t => !excludeNames.has(t.name));
+    }
+    if (availableTemplates.length === 0) {
+      availableTemplates = LEGENDARY_TEMPLATES;
+    }
+    const template = availableTemplates[Math.floor(Math.random() * availableTemplates.length)];
     const scalar = level * 1.2;
     const stats: ItemStats = {};
     if (template.stats.damage) stats.damage = Math.round(template.stats.damage * scalar);
@@ -368,21 +515,21 @@ const INITIAL_ROSTER: Hero[] = [
     character_id: 'hero_ranger',
     class: 'RANGER',
     unlocked: true,
-    base_stats: { hp: 120, armor_mult: 1.0, speed_mult: 1.15, atk_speed_mult: 1.15 },
+    base_stats: { hp: 200, armor_mult: 1.0, speed_mult: 1.15, atk_speed_mult: 1.5 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
     character_id: 'hero_warrior',
     class: 'WARRIOR',
     unlocked: false,
-    base_stats: { hp: 300, armor_mult: 1.25, speed_mult: 1.02, atk_speed_mult: 0.85 },
+    base_stats: { hp: 500, armor_mult: 1.25, speed_mult: 1.02, atk_speed_mult: 0.85 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
     character_id: 'hero_wizard',
     class: 'WIZARD',
     unlocked: false,
-    base_stats: { hp: 90, armor_mult: 0.8, speed_mult: 1.0, atk_speed_mult: 1.05 },
+    base_stats: { hp: 175, armor_mult: 0.8, speed_mult: 1.0, atk_speed_mult: 1.05 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
@@ -396,7 +543,7 @@ const INITIAL_ROSTER: Hero[] = [
     character_id: 'hero_paladin',
     class: 'PALADIN',
     unlocked: false,
-    base_stats: { hp: 145, armor_mult: 1.20, speed_mult: 0.88, atk_speed_mult: 0.90 },
+    base_stats: { hp: 250, armor_mult: 1.20, speed_mult: 0.88, atk_speed_mult: 0.90 },
     equipment: { helm: null, shoulders: null, chest: null, pants: null, boots: null, gloves: null, weapon: null }
   },
   {
@@ -614,6 +761,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return {
             ...defaultHero,
             ...hero,
+            unlocked: defaultHero.unlocked || hero.unlocked,
             base_stats: defaultHero.base_stats,
             equipment: { ...defaultEquip, ...sanitizedEquipment }
           };
@@ -697,7 +845,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (savedRoster) {
       try {
         const parsed = JSON.parse(savedRoster) as Hero[];
-        unlockedHeroesCount = parsed.filter(h => h.unlocked).length;
+        unlockedHeroesCount = parsed.filter(h => h.unlocked || INITIAL_ROSTER.find(ir => ir.character_id === h.character_id)?.unlocked).length;
       } catch (e) {}
     }
 
@@ -889,12 +1037,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const upgradeItem = (itemId: string, location: 'bag' | 'hero', heroId?: string) => {
     const item = getItemRef(itemId, location, heroId);
-    if (!item || item.rarity === 'Legendary') return;
+    if (!item) return;
 
-    // Upgrades cost scales with the level (+25 gold per upgrade level)
+    // Upgrades cost scales with the level
     const match = item.name.match(/\+(\d+)/);
     const level = match ? parseInt(match[1], 10) : 0;
-    const cost = 50 + level * 25;
+    
+    let cost = 0;
+    if (item.rarity === 'Legendary') {
+      cost = (level + 1) * 10000;
+    } else {
+      cost = 50 + level * 25;
+    }
+
     if (gold < cost) return;
 
     const stats = { ...item.stats };
@@ -1402,7 +1557,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Generate 3 choices
         const allChoices = [
           { title: 'Divine Shield', description: 'Grant Warrior +15% Health', classTag: 'WARRIOR' as HeroClass, type: 'stat' as const, value: 0.15 },
-          { title: 'Shield Slam', description: 'Warrior attacks stun targets', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Shield Slam', description: 'Warrior attacks stun targets for 1.5s per stack', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Vampiric Blade', description: 'Warrior gains +3% Life Steal', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.03 },
           { title: 'Second Wind', description: 'Warrior heals 2% max HP per second (under 50% HP)', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.02 },
           { title: 'Sharpshooter', description: 'Grant Ranger +10% Damage', classTag: 'RANGER' as HeroClass, type: 'stat' as const, value: 0.10 },
@@ -1414,9 +1569,32 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           { title: 'Charge', description: 'Warrior charges nearest enemy when clear', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 1 },
           { title: 'Block Mastery', description: 'Warrior gains +7% Block Chance', classTag: 'WARRIOR' as HeroClass, type: 'skill' as const, value: 0.07 },
           { title: 'Poison Arrow', description: 'Ranger arrows apply stacking poison', classTag: 'RANGER' as HeroClass, type: 'skill' as const, value: 1 },
-          { title: 'Marked for Death', description: 'Enemies hit by Warrior are marked; Ranger attacks hit all marked enemies', synergyClasses: ['WARRIOR', 'RANGER'] as HeroClass[], type: 'skill' as const, value: 1 },
+          { title: 'Marked for Death', description: 'Enemies hit by Warrior are marked (max 3, +1 per lvl); Ranger attacks hit all marked enemies', synergyClasses: ['WARRIOR', 'RANGER'] as HeroClass[], type: 'skill' as const, value: 1 },
           { title: 'Quick Burn', description: 'Sorceress benefits from 50% (+10% per level) of Ranger\'s Double Shot CDR', synergyClasses: ['RANGER', 'WIZARD'] as HeroClass[], type: 'skill' as const, value: 1 },
-          { title: 'Fire Armor', description: 'Sorceress shields Warrior with fire; attackers of Warrior take 15 (+10/lvl) dmg', synergyClasses: ['WARRIOR', 'WIZARD'] as HeroClass[], type: 'skill' as const, value: 1 }
+          { title: 'Fire Armor', description: 'Sorceress shields Warrior with fire; attackers of Warrior take 15 (+10/lvl) dmg', synergyClasses: ['WARRIOR', 'WIZARD'] as HeroClass[], type: 'skill' as const, value: 1 },
+          
+          // Necromancer
+          { title: 'Increase Horde', description: 'Adds +3 minions that can be revived to fight alongside', classTag: 'NECROMANCER' as HeroClass, type: 'skill' as const, value: 3 },
+          { title: 'Skeleton Magi', description: 'Revived minions have 50% (+10% per lvl) chance to be skeletal magi', classTag: 'NECROMANCER' as HeroClass, type: 'skill' as const, value: 0.5 },
+          { title: 'Skeletal Detonation', description: 'Explodes any minion in melee range of an enemy causing 50 (+50/lvl) AoE damage, 20 second cd (-2s/lvl, min 10s)', classTag: 'NECROMANCER' as HeroClass, type: 'skill' as const, value: 20 },
+
+          // Paladin
+          { title: 'Devotion Aura', description: 'Paladin aura grants +10% damage reduction (armor) per stack', classTag: 'PALADIN' as HeroClass, type: 'stat' as const, value: 0.10 },
+          { title: 'Retribution Aura', description: 'Allies inside Paladin aura reflect 15% (+10% per lvl) damage taken', classTag: 'PALADIN' as HeroClass, type: 'skill' as const, value: 0.15 },
+          { title: 'Aura Mastery', description: 'Paladin aura radius is increased and grants +5% bonus dmg/def', classTag: 'PALADIN' as HeroClass, type: 'stat' as const, value: 0.05 },
+
+          // Druid
+          { title: 'Feral Swiftness', description: 'Werewolf attack speed increased by 25% per stack', classTag: 'DRUID' as HeroClass, type: 'stat' as const, value: 0.25 },
+          { title: 'Ursine Fortitude', description: 'Bear max HP increased by 20% and block chance +10% per stack', classTag: 'DRUID' as HeroClass, type: 'stat' as const, value: 0.20 },
+          { title: 'Owl Clarity', description: 'Owl spell damage (AoE attacks) increased by 20% per stack', classTag: 'DRUID' as HeroClass, type: 'stat' as const, value: 0.20 },
+          { title: 'Quick Shift', description: 'Druid shapeshifts 25% faster and heals 5% max HP on shifting', classTag: 'DRUID' as HeroClass, type: 'skill' as const, value: 0.25 },
+          { title: 'Wolf Pack', description: 'Summons 2 wolves (+2 per stack) on a 1 min cd; queues up when max wolves are alive', classTag: 'DRUID' as HeroClass, type: 'skill' as const, value: 60 },
+
+          // Rogue
+          { title: 'Dagger Poisoning', description: 'Rogue melee attacks apply a stack of poison', classTag: 'ROGUE' as HeroClass, type: 'skill' as const, value: 1 },
+          { title: 'Shadowstep', description: 'Rogue teleports behind current target every 10s (-2s/lvl, min 4s) dealing double damage', classTag: 'ROGUE' as HeroClass, type: 'skill' as const, value: 10 },
+          { title: 'Evasive Maneuvers', description: 'Rogue gains +15% dodge chance per stack', classTag: 'ROGUE' as HeroClass, type: 'stat' as const, value: 0.15 },
+          { title: 'Adrenaline Rush', description: 'Rogue gains +30% attack/move speed for 4s after a kill', classTag: 'ROGUE' as HeroClass, type: 'stat' as const, value: 0.30 }
         ];
 
         // Filter choices to only match living classes (or be generic, or require all synergy classes)
@@ -1923,6 +2101,48 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return hero;
     }));
+
+    if (heroClass === 'WIZARD') {
+      enqueueDialogue([
+        {
+          speaker: "Sorceress",
+          portrait: import.meta.env.BASE_URL + "sorceress.png",
+          text: "Ah, a hiring contract? I suppose my research into the ley lines of this tavern can wait... for a price."
+        }
+      ]);
+    } else if (heroClass === 'NECROMANCER') {
+      enqueueDialogue([
+        {
+          speaker: "Necromancer",
+          portrait: import.meta.env.BASE_URL + "wizard.png",
+          text: "You bought my services? Great. More walking talking skeletons to order around. Let's get this over with."
+        }
+      ]);
+    } else if (heroClass === 'DRUID') {
+      enqueueDialogue([
+        {
+          speaker: "Druid",
+          portrait: import.meta.env.BASE_URL + "druid.png",
+          text: "Peace, man. 300 gold? That's, like, a lot of organic seed feed. I'm down to help you clear those bad vibes in the dungeon."
+        }
+      ]);
+    } else if (heroClass === 'PALADIN') {
+      enqueueDialogue([
+        {
+          speaker: "Paladin",
+          portrait: import.meta.env.BASE_URL + "warrior.png",
+          text: "Ah, a wise investment! For only 300 gold, you secure the shield of the most beautiful and radiant knight in the realm. You are welcome!"
+        }
+      ]);
+    } else if (heroClass === 'ROGUE') {
+      enqueueDialogue([
+        {
+          speaker: "Rogue",
+          portrait: import.meta.env.BASE_URL + "rogue.png",
+          text: "300 gold? No questions asked? Deal. If anyone asks, you haven't seen me, and I was definitely in the barracks the whole time."
+        }
+      ]);
+    }
   };
 
   return (

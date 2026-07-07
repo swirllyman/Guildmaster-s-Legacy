@@ -3,9 +3,113 @@ import { useGame } from '../../context/GameContext';
 import { Shop } from './Shop';
 import { Blacksmith } from './Blacksmith';
 import { TownChef } from './TownChef';
-import type { EquipmentSlot, Item } from '../../types/game';
-import { Sword, Shield, Crown, Footprints, ShieldAlert, Award, ShieldCheck, HelpCircle } from 'lucide-react';
+import type { EquipmentSlot, Item, HeroClass } from '../../types/game';
+import { POWERUP_DESCRIPTIONS } from '../../types/game';
+import { Sword, Shield, Crown, Footprints, ShieldAlert, Award, ShieldCheck, HelpCircle, BookOpen, Users } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
+
+const COMPENDIUM_HEROES = [
+  {
+    class: 'RANGER' as HeroClass,
+    displayName: 'RANGER',
+    passiveName: 'Fleet-Footed',
+    passiveDesc: 'Ranger receives +20% movement speed (1.2x multiplier) and fires high-velocity arrows from a safe distance.',
+    description: 'An agile marksman skilled in quick movement and ranged physical attacks.',
+    baseAttackRange: '4.5 (Ranged)',
+    baseAttackCooldown: '1.0s',
+  },
+  {
+    class: 'WARRIOR' as HeroClass,
+    displayName: 'WARRIOR',
+    passiveName: 'Shield Block & Vampirism',
+    passiveDesc: 'Warrior has a 25% chance to block incoming melee attacks (reducing damage taken by 75%), starts with +2% base Life Steal, and commands high combat threat.',
+    description: 'A heavily armored frontline fighter who absorbs damage and retaliates with devastating blows.',
+    baseAttackRange: '1.2 (Melee)',
+    baseAttackCooldown: '1.2s',
+  },
+  {
+    class: 'WIZARD' as HeroClass,
+    displayName: 'SORCERESS',
+    passiveName: 'Arcane Mastery',
+    passiveDesc: 'Casts powerful area-of-effect spells from a long distance. Spells scale heavily with Magical Power.',
+    description: 'A glass-cannon spellcaster wielding destructive elemental and explosion magic.',
+    baseAttackRange: '3.5 (Ranged)',
+    baseAttackCooldown: '1.8s',
+  },
+  {
+    class: 'ROGUE' as HeroClass,
+    displayName: 'ROGUE',
+    passiveName: 'Stealth & Shadow Arts',
+    passiveDesc: 'Starts each chamber in Stealth. Attacks from Stealth deal 2.5x damage (Shadowstrike). Automatically Vanishes back into Stealth for 6 seconds when health drops below 50% for the first time in a chamber.',
+    description: 'A stealthy assassin capable of striking from the shadows and escaping death.',
+    baseAttackRange: '1.2 (Melee)',
+    baseAttackCooldown: '0.9s',
+  },
+  {
+    class: 'PALADIN' as HeroClass,
+    displayName: 'PALADIN',
+    passiveName: 'Devotion Aura',
+    passiveDesc: 'Radiates a protective holy aura that grants the Paladin and nearby allies +10% base damage reduction.',
+    description: 'A holy protector who bolsters the squad\'s defenses while dealing solid melee damage.',
+    baseAttackRange: '1.2 (Melee)',
+    baseAttackCooldown: '1.2s',
+  },
+  {
+    class: 'DRUID' as HeroClass,
+    displayName: 'DRUID',
+    passiveName: 'Wild Shape Cycle',
+    passiveDesc: 'Shapeshifts every 8 seconds, cycling through Bear Form (tanky, +20% Block Chance), Werewolf Form (fast, 0.8s attack cooldown), and Owl Form (ranged, 3.2 range, 1.6s attack cooldown).',
+    description: 'A versatile shape-shifter who adapts to the battlefield by morphing into beast forms.',
+    baseAttackRange: '1.2 / 3.2',
+    baseAttackCooldown: '0.8s / 1.4s / 1.6s',
+  },
+  {
+    class: 'NECROMANCER' as HeroClass,
+    displayName: 'NECROMANCER',
+    passiveName: 'Minion Reanimation',
+    passiveDesc: 'Defeating a hostile enemy automatically raises them as a skeletal minion to fight alongside the squad (max 5 active skeleton minions by default).',
+    description: 'A dark commander of the dead who summons skeletal minions to overwhelm foes.',
+    baseAttackRange: '3.0 (Ranged)',
+    baseAttackCooldown: '1.5s',
+  }
+];
+
+const getPowerupCategory = (name: string): string => {
+  const warriorPups = ['Divine Shield', 'Shield Slam', 'Vampiric Blade', 'Second Wind', 'Block Mastery', 'Charge'];
+  const rangerPups = ['Sharpshooter', 'Double Shot', 'Poison Arrow'];
+  const wizardPups = ['Mana Flow', 'Fireball Strike'];
+  const roguePups = ['Dagger Poisoning', 'Shadowstep', 'Evasive Maneuvers', 'Adrenaline Rush'];
+  const paladinPups = ['Devotion Aura', 'Retribution Aura', 'Aura Mastery'];
+  const druidPups = ['Feral Swiftness', 'Ursine Fortitude', 'Owl Clarity', 'Quick Shift', 'Wolf Pack'];
+  const necroPups = ['Increase Horde', 'Skeleton Magi', 'Skeletal Detonation'];
+  const synergyPups = ['Marked for Death', 'Quick Burn', 'Fire Armor'];
+
+  if (warriorPups.includes(name)) return 'WARRIOR';
+  if (rangerPups.includes(name)) return 'RANGER';
+  if (wizardPups.includes(name)) return 'WIZARD';
+  if (roguePups.includes(name)) return 'ROGUE';
+  if (paladinPups.includes(name)) return 'PALADIN';
+  if (druidPups.includes(name)) return 'DRUID';
+  if (necroPups.includes(name)) return 'NECROMANCER';
+  if (synergyPups.includes(name)) return 'SYNERGY';
+  return 'GENERAL';
+};
+
+const getCategoryColor = (category: string) => {
+  const colorMap: Record<string, string> = {
+    WARRIOR: '#3b82f6',
+    RANGER: '#10b981',
+    WIZARD: '#a855f7',
+    ROGUE: '#f43f5e',
+    PALADIN: '#eab308',
+    DRUID: '#06b6d4',
+    NECROMANCER: '#ec4899',
+    SYNERGY: '#f97316',
+    GENERAL: '#cbd5e1',
+  };
+  return colorMap[category] || '#fff';
+};
+
 
 
 
@@ -34,6 +138,12 @@ export const TownScene: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<EquipmentSlot | null>('weapon');
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  // Compendium states
+  const [showLexiconModal, setShowLexiconModal] = useState<boolean>(false);
+  const [showHeroCompendiumModal, setShowHeroCompendiumModal] = useState<boolean>(false);
+  const [lexiconActiveTab, setLexiconActiveTab] = useState<string>('ALL');
+  const [heroCompendiumSelectedClass, setHeroCompendiumSelectedClass] = useState<HeroClass>('RANGER');
 
   const handleMouseMove = (e: React.MouseEvent) => {
     setMouseCoords({ x: e.clientX, y: e.clientY });
@@ -116,9 +226,9 @@ export const TownScene: React.FC = () => {
       RANGER: 'ranger.png',
       WARRIOR: 'warrior_chef.png',
       WIZARD: 'sorceress.png',
-      ROGUE: 'ranger.png',
+      ROGUE: 'rogue.png',
       PALADIN: 'warrior.png',
-      DRUID: 'ranger.png',
+      DRUID: 'druid.png',
       NECROMANCER: 'wizard.png'
     };
     const path = pathMap[heroClass] || 'ranger.png';
@@ -433,7 +543,7 @@ export const TownScene: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Center Column: Helm, Chest, Pants, Boots */}
+                {/* Center Column: Helm, Chest, Pants */}
                 <div className="paperdoll-center-column">
                   <div 
                     onClick={() => setSelectedSlot('helm')}
@@ -470,21 +580,9 @@ export const TownScene: React.FC = () => {
                     <span className="slot-label">Pants</span>
                     {hasUpgradeInBag('pants') && <span className="upgrade-dot" />}
                   </div>
-
-                  <div 
-                    onClick={() => setSelectedSlot('boots')}
-                    onMouseEnter={(e) => activeHero?.equipment?.boots && handleMouseEnterItem(activeHero.equipment.boots, e)}
-                    onMouseMove={handleMouseMove}
-                    onMouseLeave={handleMouseLeaveItem}
-                    className={`paperdoll-slot boots-slot ${selectedSlot === 'boots' ? 'active' : ''} ${hasUpgradeInBag('boots') ? 'upgrade-glow' : ''}`}
-                  >
-                    <Footprints size={20} className={activeHero?.equipment?.boots ? 'occupied' : 'empty'} />
-                    <span className="slot-label">Boots</span>
-                    {hasUpgradeInBag('boots') && <span className="upgrade-dot" />}
-                  </div>
                 </div>
 
-                {/* Right Column: Weapon & Decorative Off-hand Shield */}
+                {/* Right Column: Weapon & Boots */}
                 <div className="paperdoll-side-column">
                   <div 
                     onClick={() => setSelectedSlot('weapon')}
@@ -498,9 +596,16 @@ export const TownScene: React.FC = () => {
                     {hasUpgradeInBag('weapon') && <span className="upgrade-dot" />}
                   </div>
 
-                  <div className="paperdoll-slot-decorative">
-                    <Shield size={14} className="opacity-15 text-gray-600" />
-                    <span className="slot-label-decorative">Off-hand</span>
+                  <div 
+                    onClick={() => setSelectedSlot('boots')}
+                    onMouseEnter={(e) => activeHero?.equipment?.boots && handleMouseEnterItem(activeHero.equipment.boots, e)}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeaveItem}
+                    className={`paperdoll-slot boots-slot ${selectedSlot === 'boots' ? 'active' : ''} ${hasUpgradeInBag('boots') ? 'upgrade-glow' : ''}`}
+                  >
+                    <Footprints size={20} className={activeHero?.equipment?.boots ? 'occupied' : 'empty'} />
+                    <span className="slot-label">Boots</span>
+                    {hasUpgradeInBag('boots') && <span className="upgrade-dot" />}
                   </div>
                 </div>
 
@@ -733,7 +838,34 @@ export const TownScene: React.FC = () => {
 
       {/* 3. Bottom Row: Squad Formation + Inventory */}
       <div className="bottom-split-row">
-        {/* Left: Squad Formation */}
+        {/* Left: Gameplay Info / Compendiums */}
+        <div className="gameplay-info-panel">
+          <h3 className="gameplay-info-panel-title">Gameplay Compendium</h3>
+          <div className="gameplay-info-buttons">
+            <button 
+              className="btn-fantasy-compendium"
+              onClick={() => {
+                setLexiconActiveTab('ALL');
+                setShowLexiconModal(true);
+              }}
+            >
+              <BookOpen size={13} style={{ marginRight: '6px' }} />
+              Powerup Lexicon
+            </button>
+            <button 
+              className="btn-fantasy-compendium"
+              onClick={() => {
+                setHeroCompendiumSelectedClass('RANGER');
+                setShowHeroCompendiumModal(true);
+              }}
+            >
+              <Users size={13} style={{ marginRight: '6px' }} />
+              Hero Compendium
+            </button>
+          </div>
+        </div>
+
+        {/* Center: Squad Formation */}
         <div className="squad-display-panel">
           <h3 className="squad-display-title">Active Squad Formation</h3>
 
@@ -848,6 +980,163 @@ export const TownScene: React.FC = () => {
         </div>
       </div>
       {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
+
+      {/* Powerup Lexicon Modal */}
+      {showLexiconModal && (
+        <div className="compendium-modal-overlay" onClick={() => setShowLexiconModal(false)}>
+          <div className="compendium-modal-card" onClick={e => e.stopPropagation()}>
+            <button className="compendium-modal-close-btn" onClick={() => setShowLexiconModal(false)}>✕</button>
+            <h2 className="compendium-modal-title">Powerup Lexicon</h2>
+            <p className="compendium-modal-subtitle">Overview of all powerups available in the game, categorized by class.</p>
+            
+            {/* Category Tabs */}
+            <div className="compendium-tabs">
+              {['ALL', 'WARRIOR', 'RANGER', 'WIZARD', 'ROGUE', 'PALADIN', 'DRUID', 'NECROMANCER', 'GENERAL', 'SYNERGY'].map(tab => (
+                <button 
+                  key={tab} 
+                  className={`compendium-tab-btn ${lexiconActiveTab === tab ? 'active' : ''}`}
+                  onClick={() => setLexiconActiveTab(tab)}
+                >
+                  {tab === 'WIZARD' ? 'SORCERESS' : tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Grid display */}
+            <div className="compendium-content-scroll">
+              <div className="compendium-grid">
+                {Object.entries(POWERUP_DESCRIPTIONS)
+                  .filter(([name]) => {
+                    if (lexiconActiveTab === 'ALL') return true;
+                    return getPowerupCategory(name) === lexiconActiveTab;
+                  })
+                  .map(([name, desc]) => {
+                    const category = getPowerupCategory(name);
+                    const classColor = getCategoryColor(category);
+                    return (
+                      <div key={name} className="powerup-card" style={{ borderLeft: `3px solid ${classColor}` }}>
+                        <span className="powerup-card-title" style={{ color: classColor }}>{name}</span>
+                        <span className="powerup-card-class-tag">{category === 'WIZARD' ? 'SORCERESS' : category}</span>
+                        <span className="powerup-card-desc">{desc}</span>
+                      </div>
+                    );
+                  })
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Compendium Modal */}
+      {showHeroCompendiumModal && (
+        <div className="compendium-modal-overlay" onClick={() => setShowHeroCompendiumModal(false)}>
+          <div className="compendium-modal-card" onClick={e => e.stopPropagation()}>
+            <button className="compendium-modal-close-btn" onClick={() => setShowHeroCompendiumModal(false)}>✕</button>
+            <h2 className="compendium-modal-title">Hero Compendium</h2>
+            <p className="compendium-modal-subtitle">Detailed breakdown of each hero class, their base attributes, and unique passives.</p>
+
+            <div className="hero-compendium-layout">
+              {/* Sidebar: Hero List */}
+              <div className="hero-compendium-sidebar">
+                {COMPENDIUM_HEROES.map(heroDef => {
+                  const rHero = roster.find(h => h.class === heroDef.class);
+                  const isUnlocked = rHero?.unlocked ?? false;
+                  const isActive = heroCompendiumSelectedClass === heroDef.class;
+                  return (
+                    <div 
+                      key={heroDef.class}
+                      className={`hero-sidebar-item ${isActive ? 'active' : ''} ${!isUnlocked ? 'locked' : ''}`}
+                      onClick={() => setHeroCompendiumSelectedClass(heroDef.class)}
+                    >
+                      <img 
+                        src={getAvatarPath(heroDef.class)} 
+                        alt={heroDef.displayName} 
+                        className="hero-sidebar-avatar" 
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span className="hero-sidebar-name">{heroDef.displayName}</span>
+                        <span className="hero-sidebar-status">
+                          {isUnlocked ? 'Unlocked' : 'Locked'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Main Area: Selected Hero Details */}
+              {(() => {
+                const selectedHeroDef = COMPENDIUM_HEROES.find(h => h.class === heroCompendiumSelectedClass);
+                const selectedRosterHero = roster.find(h => h.class === heroCompendiumSelectedClass);
+                if (!selectedHeroDef || !selectedRosterHero) return null;
+
+                const isUnlocked = selectedRosterHero.unlocked;
+
+                return (
+                  <div className="hero-compendium-details">
+                    <div className="hero-details-header">
+                      <img 
+                        src={getAvatarPath(selectedHeroDef.class)} 
+                        alt={selectedHeroDef.displayName} 
+                        className="hero-details-avatar" 
+                      />
+                      <div className="hero-details-title-area">
+                        <h3 className="hero-details-class-name">{selectedHeroDef.displayName}</h3>
+                        <span className={`hero-details-status-badge ${isUnlocked ? 'unlocked' : 'locked'}`}>
+                          {isUnlocked ? 'Unlocked' : 'Locked'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: '0.8rem', color: '#cbd5e0', fontStyle: 'italic', margin: '0' }}>
+                      {selectedHeroDef.description}
+                    </p>
+
+                    {/* Stats Section */}
+                    <div className="hero-details-stats-section">
+                      <h4 className="hero-details-section-title">Base Attributes</h4>
+                      <div className="hero-stats-grid">
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Max HP</span>
+                          <span className="hero-stat-box-value">{selectedRosterHero.base_stats.hp}</span>
+                        </div>
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Armor Mult</span>
+                          <span className="hero-stat-box-value">{selectedRosterHero.base_stats.armor_mult.toFixed(2)}x</span>
+                        </div>
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Speed Mult</span>
+                          <span className="hero-stat-box-value">{selectedRosterHero.base_stats.speed_mult.toFixed(2)}x</span>
+                        </div>
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Atk Speed Mult</span>
+                          <span className="hero-stat-box-value">{selectedRosterHero.base_stats.atk_speed_mult.toFixed(2)}x</span>
+                        </div>
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Atk Range</span>
+                          <span className="hero-stat-box-value" style={{ fontSize: '0.8rem' }}>{selectedHeroDef.baseAttackRange}</span>
+                        </div>
+                        <div className="hero-stat-box">
+                          <span className="hero-stat-box-title">Base Attack CD</span>
+                          <span className="hero-stat-box-value" style={{ fontSize: '0.8rem' }}>{selectedHeroDef.baseAttackCooldown}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Passive Section */}
+                    <div className="hero-details-passive-section">
+                      <h4 className="hero-details-section-title" style={{ color: '#f87171' }}>Passive Ability</h4>
+                      <div className="hero-passive-name">{selectedHeroDef.passiveName}</div>
+                      <div className="hero-passive-desc">{selectedHeroDef.passiveDesc}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

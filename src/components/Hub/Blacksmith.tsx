@@ -75,6 +75,9 @@ export const Blacksmith: React.FC = () => {
   };
 
   const getUpgradeCost = (item: Item) => {
+    if (item.rarity === 'Legendary') {
+      return (getUpgradeLevel(item) + 1) * 10000;
+    }
     return 50 + getUpgradeLevel(item) * 25;
   };
 
@@ -292,23 +295,19 @@ export const Blacksmith: React.FC = () => {
                 <div className="forge-action-card">
                   <div className="forge-action-card-header">
                     <span className="forge-action-title">Stat Upgrade (+1)</span>
-                    {activeItem.rarity !== 'Legendary' ? (
-                      <span className="forge-action-cost">{getUpgradeCost(activeItem)}g</span>
-                    ) : (
-                      <span className="forge-action-max">LOCKED</span>
-                    )}
+                    <span className="forge-action-cost">{getUpgradeCost(activeItem)}g</span>
                   </div>
                   <p className="forge-action-desc">
                     {activeItem.rarity === 'Legendary' 
-                      ? 'Legendary items are too powerful to be upgraded.' 
+                      ? 'Flatly boosts stats, but legendary tempering is extremely expensive.' 
                       : 'Flatly boosts primary health, weapon damage, or armor ratings.'}
                   </p>
                   <button
-                    disabled={activeItem.rarity === 'Legendary' || gold < getUpgradeCost(activeItem)}
+                    disabled={gold < getUpgradeCost(activeItem)}
                     className="forge-action-btn"
                     onClick={handleUpgrade}
                   >
-                    {activeItem.rarity === 'Legendary' ? 'Cannot Upgrade Legendary' : 'Upgrade Item'}
+                    Upgrade Item
                   </button>
                 </div>
 

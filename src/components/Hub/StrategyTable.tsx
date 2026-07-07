@@ -19,9 +19,9 @@ const getAvatarPath = (heroClass: string) => {
     RANGER: 'ranger.png',
     WARRIOR: 'warrior_chef.png',
     WIZARD: 'sorceress.png',
-    ROGUE: 'ranger.png',
+    ROGUE: 'rogue.png',
     PALADIN: 'warrior.png',
-    DRUID: 'ranger.png',
+    DRUID: 'druid.png',
     NECROMANCER: 'wizard.png'
   };
   const path = pathMap[heroClass] || 'ranger.png';
@@ -70,7 +70,13 @@ export const StrategyTable: React.FC = () => {
 
   // Calculate stats including equipment
   const getCombinedStats = (hero: Hero) => {
-    const classBaseDmg = hero.class === 'WARRIOR' ? 12 : hero.class === 'WIZARD' ? 16 : 9;
+    const classBaseDmg =
+      hero.class === 'WARRIOR' ? 12 :
+      hero.class === 'WIZARD' ? 16 :
+      hero.class === 'PALADIN' ? 11 :
+      hero.class === 'NECROMANCER' ? 10 :
+      hero.class === 'DRUID' ? 10 :
+      9;
 
     let hp = hero.base_stats.hp;
     let damage = classBaseDmg;

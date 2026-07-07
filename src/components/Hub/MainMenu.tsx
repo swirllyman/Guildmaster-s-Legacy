@@ -36,9 +36,9 @@ export const MainMenu: React.FC = () => {
       RANGER: 'ranger.png',
       WARRIOR: 'warrior_chef.png',
       WIZARD: 'sorceress.png',
-      ROGUE: 'ranger.png',
+      ROGUE: 'rogue.png',
       PALADIN: 'warrior.png',
-      DRUID: 'ranger.png',
+      DRUID: 'druid.png',
       NECROMANCER: 'wizard.png'
     };
     const path = spriteMap[heroClass] || 'ranger.png';

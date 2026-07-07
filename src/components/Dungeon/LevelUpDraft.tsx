@@ -14,73 +14,93 @@ export const LevelUpDraft: React.FC = () => {
     localStorage.setItem('autoDraftActive', isAutoDraftActive ? 'true' : 'false');
   }, [isAutoDraftActive]);
 
+  const [autoDraftCountdown, setAutoDraftCountdown] = useState<number | null>(null);
+
   const handleSelect = (index: number) => {
     triggerDraftChoice(index);
   };
 
+  // 1. Reset/initialize auto draft countdown if conditions change
   useEffect(() => {
     if (!isAutoDraftActive || !activeRun || !activeRun.drafting || !activeRun.draftChoices || activeRun.draftChoices.length === 0) {
+      setAutoDraftCountdown(null);
       return;
     }
 
-    let bestIndex = 0;
-    let highestScore = -Infinity;
+    if (autoDraftCountdown === null) {
+      setAutoDraftCountdown(3);
+    }
+  }, [isAutoDraftActive, activeRun?.drafting, activeRun?.draftChoices, autoDraftCountdown]);
 
-    activeRun.draftChoices.forEach((choice, index) => {
-      let score = 0;
+  // 2. Countdown ticking mechanism
+  useEffect(() => {
+    if (autoDraftCountdown === null || !activeRun) return;
 
-      // 1. Synergy upgrades get the highest priority
-      if (choice.synergyClasses && choice.synergyClasses.length > 0) {
-        score += 100;
-      }
+    const run = activeRun;
 
-      // 2. Class-specific active skills
-      if (choice.classTag && choice.type === 'skill') {
-        score += 50;
-      }
+    if (autoDraftCountdown === 0) {
+      // Evaluate draft choices and find the best one
+      let bestIndex = 0;
+      let highestScore = -Infinity;
 
-      // 3. Stat upgrades
-      if (choice.type === 'stat') {
-        score += 30;
-      }
+      run.draftChoices.forEach((choice, index) => {
+        let score = 0;
 
-      // 4. Heals (elevated dynamically based on party HP)
-      if (choice.type === 'heal') {
-        let totalHp = 0;
-        let totalMaxHp = 0;
-        if (activeRun.livingSquad) {
-          Object.values(activeRun.livingSquad).forEach((hero: any) => {
-            if (hero.hp > 0) {
-              totalHp += hero.hp;
-              totalMaxHp += hero.maxHp;
-            }
-          });
+        // 1. Synergy upgrades get the highest priority
+        if (choice.synergyClasses && choice.synergyClasses.length > 0) {
+          score += 100;
         }
-        const avgHpRatio = totalMaxHp > 0 ? (totalHp / totalMaxHp) : 1;
-        
-        if (avgHpRatio < 0.4) {
-          score += 120; // Critical healing need
-        } else if (avgHpRatio < 0.7) {
-          score += 40;  // Moderate healing need
-        } else {
-          score += 10;  // Low healing need
+
+        // 2. Class-specific active skills
+        if (choice.classTag && choice.type === 'skill') {
+          score += 50;
         }
-      }
 
-      if (score > highestScore) {
-        highestScore = score;
-        bestIndex = index;
-      }
-    });
+        // 3. Stat upgrades
+        if (choice.type === 'stat') {
+          score += 30;
+        }
 
-    const timeoutId = window.setTimeout(() => {
+        // 4. Heals (elevated dynamically based on party HP)
+        if (choice.type === 'heal') {
+          let totalHp = 0;
+          let totalMaxHp = 0;
+          if (run.livingSquad) {
+            Object.values(run.livingSquad).forEach((hero: any) => {
+              if (hero.hp > 0) {
+                totalHp += hero.hp;
+                totalMaxHp += hero.maxHp;
+              }
+            });
+          }
+          const avgHpRatio = totalMaxHp > 0 ? (totalHp / totalMaxHp) : 1;
+          
+          if (avgHpRatio < 0.4) {
+            score += 120; // Critical healing need
+          } else if (avgHpRatio < 0.7) {
+            score += 40;  // Moderate healing need
+          } else {
+            score += 10;  // Low healing need
+          }
+        }
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestIndex = index;
+        }
+      });
+
       handleSelect(bestIndex);
+      setAutoDraftCountdown(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setAutoDraftCountdown(prev => (prev !== null ? prev - 1 : null));
     }, 1000);
 
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [isAutoDraftActive, activeRun?.drafting, activeRun?.draftChoices]);
+    return () => clearTimeout(timer);
+  }, [autoDraftCountdown, activeRun]);
 
   if (!activeRun || !activeRun.drafting) return null;
 
@@ -89,9 +109,9 @@ export const LevelUpDraft: React.FC = () => {
       RANGER: 'ranger.png',
       WARRIOR: 'warrior_chef.png',
       WIZARD: 'sorceress.png',
-      ROGUE: 'ranger.png',
+      ROGUE: 'rogue.png',
       PALADIN: 'warrior.png',
-      DRUID: 'ranger.png',
+      DRUID: 'druid.png',
       NECROMANCER: 'wizard.png'
     };
     const path = pathMap[heroClass] || 'ranger.png';
@@ -107,17 +127,21 @@ export const LevelUpDraft: React.FC = () => {
   const getCardIcon = (type: 'stat' | 'skill' | 'heal', classTag?: string, isSynergy?: boolean) => {
     if (isSynergy) return <Layers className="text-fuchsia-400" size={28} />;
     if (classTag === 'WARRIOR') return <Shield className="text-blue-400" size={28} />;
+    if (classTag === 'PALADIN') return <Shield className="text-yellow-400" size={28} />;
     if (classTag === 'RANGER') return <Sword className="text-green-400" size={28} />;
+    if (classTag === 'DRUID') return <Activity className="text-emerald-400" size={28} />;
     if (classTag === 'WIZARD') return <Zap className="text-purple-400" size={28} />;
+    if (classTag === 'NECROMANCER') return <Zap className="text-fuchsia-400" size={28} />;
+    if (classTag === 'ROGUE') return <Sword className="text-red-400" size={28} />;
     
     if (type === 'heal') return <Heart className="text-red-400" size={28} />;
     return <Activity className="text-amber-400" size={28} />;
   };
 
   const getCardThemeClass = (classTag?: string) => {
-    if (classTag === 'WARRIOR') return 'card-warrior';
-    if (classTag === 'RANGER') return 'card-ranger';
-    if (classTag === 'WIZARD') return 'card-wizard';
+    if (classTag === 'WARRIOR' || classTag === 'PALADIN') return 'card-warrior';
+    if (classTag === 'RANGER' || classTag === 'DRUID' || classTag === 'ROGUE') return 'card-ranger';
+    if (classTag === 'WIZARD' || classTag === 'NECROMANCER') return 'card-wizard';
     return 'card-generic';
   };
 
@@ -138,7 +162,14 @@ export const LevelUpDraft: React.FC = () => {
               checked={isAutoDraftActive}
               onChange={(e) => setIsAutoDraftActive(e.target.checked)}
             />
-            <span>Auto-Select Best Powerup</span>
+            <span>
+              Auto-Select Best Powerup
+              {autoDraftCountdown !== null && (
+                <span className="text-amber-400/80 text-[10px] ml-1 font-mono">
+                  (Selecting in {autoDraftCountdown}s...)
+                </span>
+              )}
+            </span>
           </label>
         </div>
 
@@ -216,11 +247,11 @@ export const LevelUpDraft: React.FC = () => {
                 </div>
               ) : (
                 Object.entries(stackedPowerups).map(([powerup, count], idx) => {
-                  const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
-                  const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block'));
-                  const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge'));
-                  const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike'));
-                  const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind'));
+                   const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
+                   const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block') || powerup.includes('Ursine') || powerup.includes('Devotion') || powerup.includes('Evasive'));
+                   const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge') || powerup.includes('Feral') || powerup.includes('Horde') || powerup.includes('Magi') || powerup.includes('Explosion') || powerup.includes('Shadowstep') || powerup.includes('Adrenaline'));
+                   const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike') || powerup.includes('Clarity') || powerup.includes('Aura') || powerup.includes('Poisoning'));
+                   const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind') || powerup.includes('Shift'));
                   const desc = POWERUP_DESCRIPTIONS[powerup] || 'Active team enhancement';
 
                   return (

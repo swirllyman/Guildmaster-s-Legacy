@@ -49,6 +49,9 @@ export const CampIntermission: React.FC = () => {
     localStorage.setItem('autoCampActive', isAutoCampActive ? 'true' : 'false');
   }, [isAutoCampActive]);
 
+  const [autoCampCountdown, setAutoCampCountdown] = useState<number | null>(null);
+  const [autoCampAction, setAutoCampAction] = useState<'heal' | 'deploy' | null>(null);
+
   const handleMouseMove = (e: React.MouseEvent) => {
     setMouseCoords({ x: e.clientX, y: e.clientY });
   };
@@ -94,27 +97,43 @@ export const CampIntermission: React.FC = () => {
     setShowReviveModal(false);
   };
 
+  // 1. Reset/initialize auto camp countdown if conditions change
   useEffect(() => {
-    if (!isAutoCampActive || !activeRun || showReviveModal) return;
-
-    let timeoutId: number | null = null;
-
-    if (healedHeroes.length === 0) {
-      timeoutId = window.setTimeout(() => {
-        handleHealAll();
-      }, 1000);
-    } else {
-      timeoutId = window.setTimeout(() => {
-        advanceChamber();
-      }, 1000);
+    if (!isAutoCampActive || !activeRun || showReviveModal) {
+      setAutoCampCountdown(null);
+      setAutoCampAction(null);
+      return;
     }
 
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+    const targetAction = healedHeroes.length === 0 ? 'heal' : 'deploy';
+    
+    if (autoCampAction !== targetAction) {
+      setAutoCampAction(targetAction);
+      setAutoCampCountdown(3);
+    }
+  }, [isAutoCampActive, activeRun, showReviveModal, healedHeroes, autoCampAction]);
+
+  // 2. Countdown ticking mechanism
+  useEffect(() => {
+    if (autoCampCountdown === null) return;
+
+    if (autoCampCountdown === 0) {
+      if (autoCampAction === 'heal') {
+        handleHealAll();
+      } else if (autoCampAction === 'deploy') {
+        advanceChamber();
       }
-    };
-  }, [isAutoCampActive, healedHeroes, activeRun, showReviveModal]);
+      setAutoCampCountdown(null);
+      setAutoCampAction(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setAutoCampCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [autoCampCountdown, autoCampAction]);
 
   const getSlotIcon = (slot: EquipmentSlot, isOccupied: boolean) => {
     const IconComponent = slotIcons[slot] || Shield;
@@ -131,9 +150,9 @@ export const CampIntermission: React.FC = () => {
       RANGER: 'ranger.png',
       WARRIOR: 'warrior_chef.png',
       WIZARD: 'sorceress.png',
-      ROGUE: 'ranger.png',
+      ROGUE: 'rogue.png',
       PALADIN: 'warrior.png',
-      DRUID: 'ranger.png',
+      DRUID: 'druid.png',
       NECROMANCER: 'wizard.png'
     };
     const path = pathMap[heroClass] || 'ranger.png';
@@ -240,7 +259,14 @@ export const CampIntermission: React.FC = () => {
                   checked={isAutoCampActive}
                   onChange={(e) => setIsAutoCampActive(e.target.checked)}
                 />
-                <span>Auto-Heal & Deploy</span>
+                <span>
+                  Auto-Heal & Deploy
+                  {autoCampCountdown !== null && (
+                    <span className="text-amber-400/80 text-[10px] ml-1 font-mono">
+                      ({autoCampAction === 'heal' ? 'Healing' : 'Deploying'} in {autoCampCountdown}s...)
+                    </span>
+                  )}
+                </span>
               </label>
 
               <button className="deploy-btn-pronounced wide-deploy" onClick={advanceChamber}>
