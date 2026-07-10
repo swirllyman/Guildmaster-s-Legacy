@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import type { Item } from '../../types/game';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import type { EquipmentSlot } from '../../types/game';
+import { ItemTooltip } from './ItemTooltip';
 import { 
   ShoppingBag, 
   Lock, 
@@ -16,32 +18,11 @@ import {
   Sword
 } from 'lucide-react';
 
-// Build a full stat line list for the tooltip
-const buildTooltipLines = (item: Item): { text: string; color: string }[] => {
-  const lines: { text: string; color: string }[] = [];
+interface ShopProps {
+  activeHeroId?: string | null;
+}
 
-  if (item.stats.hp)        lines.push({ text: `+${item.stats.hp} Max HP`,               color: '#4ade80' });
-  if (item.stats.armor)     lines.push({ text: `+${item.stats.armor} Armor`,              color: '#60a5fa' });
-  if (item.stats.damage)    lines.push({ text: `+${item.stats.damage} Flat Damage`,       color: '#fbbf24' });
-  if (item.stats.atkSpeed)  lines.push({ text: `+${Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Rate`, color: '#fbbf24' });
-  if (item.stats.speed)  lines.push({ text: `+${item.stats.speed}% Movement Speed`, color: '#4ade80' });
-  if (item.stats.atkCooldownReduction)  lines.push({ text: `+${Math.round(item.stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`, color: '#fbbf24' });
-  if (item.stats.critChance) lines.push({ text: `+${item.stats.critChance}% Critical Strike Chance`, color: '#c084fc' });
-  if (item.stats.lifeSteal)  lines.push({ text: `+${Math.round(item.stats.lifeSteal * 100)}% Life Steal on Hit`, color: '#c084fc' });
-  if (item.stats.chainChance) lines.push({ text: `${Math.round(item.stats.chainChance * 100)}% Chain Lightning Chance`, color: '#c084fc' });
-  if (item.stats.magic)      lines.push({ text: `+${item.stats.magic} Magic Power`,       color: '#f87171' });
-
-  item.affixes.forEach(a => {
-    // Only show affixes not already shown via stats (dedup the display)
-    if (!lines.some(l => l.text.includes(a.replace(/^\* /, '').split(' ')[0]))) {
-      lines.push({ text: `* ${a}`, color: '#c084fc' });
-    }
-  });
-
-  return lines;
-};
-
-export const Shop: React.FC = () => {
+export const Shop: React.FC<ShopProps> = ({ activeHeroId = null }) => {
   const {
     shopInventory,
     gold,
@@ -53,7 +34,30 @@ export const Shop: React.FC = () => {
     buyLateGameMercenary
   } = useGame();
 
+  const isMobile = useIsMobile();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [selectedTooltipIndex, setSelectedTooltipIndex] = useState<number | null>(null);
+
+  const handleItemInteraction = (index: number) => {
+    if (isMobile) {
+      setSelectedTooltipIndex(prev => prev === index ? null : index);
+    } else {
+      setHoveredIndex(index);
+    }
+  };
+
+  const handleItemLeave = () => {
+    if (!isMobile) {
+      setHoveredIndex(null);
+    }
+  };
+
+  const isTooltipVisible = (index: number) => {
+    if (isMobile) {
+      return selectedTooltipIndex === index;
+    }
+    return hoveredIndex === index;
+  };
 
   const handleBuy = (index: number) => {
     buyShopItem(index);
@@ -92,13 +96,7 @@ export const Shop: React.FC = () => {
     return iconMap[item.type] || <ShoppingBag size={16} />;
   };
 
-  const rarityColor: Record<string, string> = {
-    Legendary: '#ff8000',
-    Epic:      '#a335ee',
-    Rare:      '#0070dd',
-    Uncommon:  '#1eff00',
-    Common:    '#ffffff',
-  };
+
 
   const lockedHeroes = roster.filter(h => !h.unlocked);
   const mercUnlocked = runsCount >= 20;
@@ -131,16 +129,20 @@ export const Shop: React.FC = () => {
           {shopInventory.map((item, index) => {
             const cost = getItemCost(item);
             const canAfford = gold >= cost;
-            const tooltipLines = buildTooltipLines(item);
-            const isHovered = hoveredIndex === index;
             const isRightColumn = index % 2 === 1;
+
+            const activeHero = roster.find(h => h.character_id === activeHeroId) || null;
+            const equipped = (activeHero && item.type !== 'consumable')
+              ? activeHero.equipment[item.type as EquipmentSlot]
+              : null;
 
             return (
               <div
                 key={item.id}
                 className={`shop-item-row border-rarity-${item.rarity.toLowerCase()} shop-item-row--hoverable`}
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex(null)}
+                onMouseEnter={() => handleItemInteraction(index)}
+                onMouseLeave={handleItemLeave}
+                onClick={() => handleItemInteraction(index)}
               >
                 <div className="shop-item-left">
                   <div className="shop-item-sprite-box">
@@ -159,7 +161,7 @@ export const Shop: React.FC = () => {
                       {item.stats.hp && <span>+{item.stats.hp} HP </span>}
                       {item.stats.damage && <span>+{item.stats.damage} Atk </span>}
                       {item.stats.armor && <span>+{item.stats.armor} Arm </span>}
-                      {item.stats.atkSpeed && <span>+{Math.round((item.stats.atkSpeed - 1) * 100)}% Rate </span>}
+                      {item.stats.atkSpeed && <span>{(() => { const v = Math.round((item.stats.atkSpeed - 1) * 100); return `${v >= 0 ? '+' : ''}${v}`; })()}% Rate </span>}
                       {item.affixes.length > 0 && <span className="stat-affix">* {item.affixes[0]}</span>}
                     </div>
                   </div>
@@ -179,25 +181,12 @@ export const Shop: React.FC = () => {
                 </div>
 
                 {/* Hover Tooltip */}
-                {isHovered && tooltipLines.length > 0 && (
-                  <div className={`shop-item-tooltip ${isRightColumn ? 'tooltip-left' : 'tooltip-right'}`}>
-                    <div className="shop-tooltip-header">
-                      <span style={{ color: rarityColor[item.rarity] ?? '#fff' }}>
-                        {item.name}
-                      </span>
-                      <span className="shop-tooltip-rarity">{item.rarity}</span>
-                    </div>
-                    <div className="shop-tooltip-divider" />
-                    {tooltipLines.map((line, i) => (
-                      <div key={i} className="shop-tooltip-stat" style={{ color: line.color }}>
-                        {line.text}
-                      </div>
-                    ))}
-                    <div className="shop-tooltip-divider" />
-                    <div className="shop-tooltip-weight">
-                      Weight class: <strong>{item.weight === 'none' ? 'None' : item.weight === 'heavy' ? 'Heavy' : 'Light'}</strong>
-                    </div>
-                  </div>
+                {isTooltipVisible(index) && (
+                  <ItemTooltip 
+                    item={item} 
+                    placement={isRightColumn ? 'left' : 'right'} 
+                    compareWithItem={equipped}
+                  />
                 )}
               </div>
             );

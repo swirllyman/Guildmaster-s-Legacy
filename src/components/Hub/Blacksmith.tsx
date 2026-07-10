@@ -14,7 +14,11 @@ import {
 } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
 
-export const Blacksmith: React.FC = () => {
+interface BlacksmithProps {
+  onSelectedItemChange?: (item: Item | null) => void;
+}
+
+export const Blacksmith: React.FC<BlacksmithProps> = ({ onSelectedItemChange }) => {
   const {
     sharedBag,
     roster,
@@ -43,13 +47,15 @@ export const Blacksmith: React.FC = () => {
     setHoveredItem(null);
     setMouseCoords(null);
   };
-  const [rerollPrompt, setRerollPrompt] = useState<{
+  const [rerollQueue, setRerollQueue] = useState<{
     itemId: string;
     affixIndex: number;
     originalAffix: string;
     newAffix: string;
     commit: (accept: boolean) => void;
-  } | null>(null);
+  }[]>([]);
+
+  const rerollPrompt = rerollQueue[0] || null;
 
   const getSelectableItems = () => {
     if (selectedItemSource === 'bag') {
@@ -68,6 +74,12 @@ export const Blacksmith: React.FC = () => {
 
   const items = getSelectableItems();
   const activeItem = items.find(i => i.id === selectedItemId) || null;
+
+  React.useEffect(() => {
+    if (onSelectedItemChange) {
+      onSelectedItemChange(activeItem);
+    }
+  }, [activeItem, onSelectedItemChange]);
 
   const getUpgradeLevel = (item: Item) => {
     const match = item.name.match(/\+(\d+)/);
@@ -119,18 +131,25 @@ export const Blacksmith: React.FC = () => {
     if (!activeItem) return;
     try {
       const rollResult = rerollAffix(activeItem.id, affixIndex, selectedItemSource, selectedHeroId);
-      setRerollPrompt({
+      setRerollQueue(prev => [...prev, {
         itemId: activeItem.id,
         affixIndex,
         originalAffix: activeItem.affixes[affixIndex],
         newAffix: rollResult.newAffix,
         commit: (accept: boolean) => {
           rollResult.commit(accept);
-          setRerollPrompt(null);
+          setRerollQueue(prev => prev.slice(1));
         }
-      });
+      }]);
     } catch (e: any) {
       alert(e.message || "Failed to reroll");
+    }
+  };
+
+  const handleRerollAll = () => {
+    if (!activeItem || activeItem.rarity === 'Common' || activeItem.rarity === 'Legendary') return;
+    for (let i = 0; i < activeItem.affixes.length; i++) {
+      handleReroll(i);
     }
   };
 
@@ -151,23 +170,21 @@ export const Blacksmith: React.FC = () => {
     <div className="forge-vertical-layout">
       {/* RNG Reroll Modal Overlay */}
       {rerollPrompt && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="glass-panel max-w-md w-full p-6 border-amber-500 flex flex-col gap-4">
-            <h3 className="text-xl font-fantasy text-amber-500 text-center flex items-center justify-center gap-2">
-              <RefreshCw className="animate-spin text-amber-400" /> Reroll Outcome
-            </h3>
-            <div className="text-xs text-gray-400 text-center">
+        <div className="menu-modal-overlay">
+          <div className="menu-modal-card">
+            <RefreshCw size={36} className="text-amber-400 mb-2 animate-spin" />
+            <h4 className="menu-modal-title">Reroll Outcome ({rerollPrompt.affixIndex + 1})</h4>
+            <p className="menu-modal-desc">
               Gold has been consumed. Select which modifier you wish to commit to this slot.
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 my-4">
+            </p>
+            <div className="grid grid-cols-2 gap-4 my-4 w-full">
               <div
                 className="border border-gray-800 p-4 rounded bg-black/45 cursor-pointer hover:border-gray-500 transition text-center flex flex-col gap-2 justify-between"
                 onClick={() => rerollPrompt.commit(false)}
               >
                 <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Keep original</div>
                 <div className="text-xs text-gray-300 font-fantasy py-4">{rerollPrompt.originalAffix}</div>
-                <button className="px-3 py-1.5 bg-gray-800 text-white rounded text-xs font-fantasy">Keep Old</button>
+                <button className="modal-cancel-btn">Keep Old</button>
               </div>
 
               <div
@@ -178,7 +195,7 @@ export const Blacksmith: React.FC = () => {
                   <Sparkles size={12} /> Accept New
                 </div>
                 <div className="text-xs text-amber-400 font-fantasy py-4 font-bold">{rerollPrompt.newAffix}</div>
-                <button className="px-3 py-1.5 bg-amber-500 text-black rounded text-xs font-fantasy font-bold">Accept New</button>
+                <button className="modal-confirm-btn">Accept New</button>
               </div>
             </div>
           </div>
@@ -244,26 +261,21 @@ export const Blacksmith: React.FC = () => {
                     onMouseEnter={(e) => handleMouseEnterItem(item, e)}
                     onMouseMove={handleMouseMove}
                     onMouseLeave={handleMouseLeaveItem}
-                    className={`forge-item-row border-rarity-${item.rarity.toLowerCase()} ${
+                    className={`forge-item-row ${
                       selectedItemId === item.id ? 'active' : ''
                     }`}
-                    style={{ position: 'relative' }}
                   >
                     <div className="forge-item-sprite-box">
                       {getItemIcon(item)}
                     </div>
                     <div className="forge-item-details">
-                      <h4 className={`forge-item-name ${
-                        item.rarity === 'Legendary' ? 'text-legendary'
-                          : item.rarity === 'Epic' ? 'text-epic'
-                          : item.rarity === 'Rare' ? 'text-rare'
-                          : item.rarity === 'Uncommon' ? 'text-uncommon'
-                          : 'text-white'
-                      }`}>{item.name}</h4>
+                      <span className="forge-item-name" style={{ color: { Legendary: '#ff8000', Epic: '#a335ee', Rare: '#0070dd', Uncommon: '#1eff00', Common: '#ffffff' }[item.rarity] ?? '#fff' }}>{item.name}</span>
                       <div className="forge-item-sub">
-                        {item.stats.hp && <span>+{item.stats.hp} HP </span>}
-                        {item.stats.damage && <span>+{item.stats.damage} Atk </span>}
-                        {item.stats.armor && <span>+{item.stats.armor} Arm </span>}
+                        <span className="forge-item-type">{item.type}</span>
+                        {item.stats.hp && <span>+{item.stats.hp} HP</span>}
+                        {item.stats.damage && <span>+{item.stats.damage} Atk</span>}
+                        {item.stats.armor && <span>+{item.stats.armor} Arm</span>}
+                        {item.affixes.length > 0 && <span className="stat-affix">* {item.affixes[0]}</span>}
                       </div>
                     </div>
                   </div>
@@ -338,37 +350,24 @@ export const Blacksmith: React.FC = () => {
                 {/* 3. Affix reroll engine */}
                 <div className="forge-action-card">
                   <div className="forge-action-card-header">
-                    <span className="forge-action-title">Affix Reroll Engine</span>
+                    <span className="forge-action-title">Affix Reroll</span>
+                    {activeItem.rarity !== 'Common' && (
+                      <span className="forge-action-cost">{getRerollCost(activeItem) * activeItem.affixes.length}g</span>
+                    )}
                   </div>
-                  <p className="forge-action-desc">Reroll a secondary trait. Locks all other affix slots permanently.</p>
-                  
+                  <p className="forge-action-desc">Reroll all secondary traits at once.</p>
                   {activeItem.rarity === 'Common' ? (
-                    <div className="forge-affix-empty">Common items have no secondary affixes. Promote rarity to unlock.</div>
+                    <button disabled className="forge-action-btn">No Affixes</button>
+                  ) : activeItem.rarity === 'Legendary' ? (
+                    <button disabled className="forge-action-btn">Legendary Locked</button>
                   ) : (
-                    <div className="forge-affix-list">
-                      {activeItem.affixes.map((affix, index) => {
-                        const isLocked = activeItem.rerolledSlot !== undefined && activeItem.rerolledSlot !== index;
-                        const cost = getRerollCost(activeItem);
-
-                        return (
-                          <div key={index} className={`forge-affix-row ${isLocked ? 'locked' : ''}`}>
-                            <div className="forge-affix-details">
-                              <span className="forge-affix-text">{affix}</span>
-                              {activeItem.rerolledSlot === index && <span className="forge-affix-label">Unlocked</span>}
-                            </div>
-                            {!isLocked && (
-                              <button
-                                disabled={gold < cost}
-                                className="forge-reroll-btn"
-                                onClick={() => handleReroll(index)}
-                              >
-                                Reroll ({cost}g)
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <button
+                      disabled={gold < getRerollCost(activeItem) * activeItem.affixes.length}
+                      className="forge-action-btn"
+                      onClick={handleRerollAll}
+                    >
+                      Reroll All
+                    </button>
                   )}
                 </div>
               </div>
@@ -382,7 +381,30 @@ export const Blacksmith: React.FC = () => {
           )}
         </div>
       </div>
-      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
+      {hoveredItem && (
+        <ItemTooltip 
+          item={hoveredItem} 
+          coords={mouseCoords} 
+          compareWithItem={(() => {
+            const stats = { ...hoveredItem.stats };
+            if (stats.damage !== undefined) stats.damage += 3;
+            if (stats.armor !== undefined) stats.armor += 1;
+            if (stats.hp !== undefined) stats.hp += 8;
+
+            const name = hoveredItem.name.includes('+')
+              ? hoveredItem.name.replace(/\+(\d+)/, (_, n) => `+${Number(n) + 1}`)
+              : `${hoveredItem.name} +1`;
+
+            return {
+              ...hoveredItem,
+              name,
+              stats,
+            };
+          })()}
+          compareLabel="Next Upgrade"
+          isUpgradeComparison={true}
+        />
+      )}
     </div>
   );
 };

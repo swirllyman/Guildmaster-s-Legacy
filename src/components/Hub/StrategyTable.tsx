@@ -67,6 +67,7 @@ export const StrategyTable: React.FC = () => {
   const selectedHero = roster.find(h => h.character_id === selectedHeroId) || null;
   const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
   const maxSquadSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
+  const availableHeroCount = roster.filter(h => h.unlocked && !squad.includes(h.character_id)).length;
 
   // Calculate stats including equipment
   const getCombinedStats = (hero: Hero) => {
@@ -165,7 +166,7 @@ export const StrategyTable: React.FC = () => {
           {[0, 1, 2].map(index => {
             const squadHeroId = squad[index];
             const hero = roster.find(h => h.character_id === squadHeroId);
-            const isLocked = index >= maxSquadSlots;
+            const isLocked = index >= maxSquadSlots || (!squad[index] && availableHeroCount === 0);
 
             if (isLocked) {
               return (
@@ -185,7 +186,7 @@ export const StrategyTable: React.FC = () => {
 
             if (!hero) {
               return (
-                <div key={index} className="border border-dashed border-gray-700 rounded-lg p-4 flex items-center justify-between bg-black/20 hover:border-gray-500 transition cursor-pointer">
+                <div key={index} className="relative border border-dashed border-gray-700 rounded-lg p-4 flex items-center justify-between bg-black/20 hover:border-gray-500 transition cursor-pointer">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center border border-gray-700">
                       <Plus className="text-gray-500" />
@@ -195,6 +196,11 @@ export const StrategyTable: React.FC = () => {
                       <div className="text-xs text-gray-500">Assign a hero from the Roster</div>
                     </div>
                   </div>
+                  {warriorUnlocked && (
+                    <div className="new-slot-indicator">
+                      <Sparkles size={14} className="text-amber-400" />
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -265,7 +271,7 @@ export const StrategyTable: React.FC = () => {
         {/* Available Roster */}
         <h3 className="text-lg mt-6 mb-2 font-fantasy">Barracks Roster</h3>
         <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
-          {roster.map(hero => {
+          {[...roster].sort((a, b) => Number(b.unlocked) - Number(a.unlocked)).map(hero => {
             const inSquad = squad.includes(hero.character_id);
             if (inSquad) return null;
 
@@ -380,7 +386,7 @@ export const StrategyTable: React.FC = () => {
                             {item.stats.hp && <div>+{item.stats.hp} Health</div>}
                             {item.stats.damage && <div>+{item.stats.damage} Damage</div>}
                             {item.stats.armor && <div>+{item.stats.armor} Armor</div>}
-                            {item.stats.atkSpeed && <div>+{Math.round((item.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
+                            {item.stats.atkSpeed && <div>{(() => { const v = Math.round((item.stats.atkSpeed - 1) * 100); return `${v >= 0 ? '+' : ''}${v}`; })()}% Attack Speed</div>}
                             {item.stats.speed && <div>+{item.stats.speed}% Move Speed</div>}
                             {item.stats.atkCooldownReduction && <div>+{Math.round(item.stats.atkCooldownReduction * 100)}% Attack CDR</div>}
                           </div>
@@ -540,7 +546,7 @@ export const StrategyTable: React.FC = () => {
               {selectedBagItem.stats.hp && <div>+{selectedBagItem.stats.hp} Health</div>}
               {selectedBagItem.stats.damage && <div>+{selectedBagItem.stats.damage} Damage</div>}
               {selectedBagItem.stats.armor && <div>+{selectedBagItem.stats.armor} Armor Rating</div>}
-              {selectedBagItem.stats.atkSpeed && <div>+{Math.round((selectedBagItem.stats.atkSpeed - 1) * 100)}% Attack Speed</div>}
+              {selectedBagItem.stats.atkSpeed && <div>{(() => { const v = Math.round((selectedBagItem.stats.atkSpeed - 1) * 100); return `${v >= 0 ? '+' : ''}${v}`; })()}% Attack Speed</div>}
               {selectedBagItem.stats.speed && <div>+{selectedBagItem.stats.speed}% Move Speed</div>}
               {selectedBagItem.stats.atkCooldownReduction && <div>+{Math.round(selectedBagItem.stats.atkCooldownReduction * 100)}% Attack CDR</div>}
             </div>
@@ -555,7 +561,17 @@ export const StrategyTable: React.FC = () => {
           </div>
         )}
       </div>
-      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
+      {hoveredItem && (
+        <ItemTooltip 
+          item={hoveredItem} 
+          coords={mouseCoords} 
+          compareWithItem={(() => {
+            return (selectedHero && hoveredItem.type !== 'consumable')
+              ? selectedHero.equipment[hoveredItem.type as EquipmentSlot]
+              : null;
+          })()}
+        />
+      )}
     </div>
   );
 };

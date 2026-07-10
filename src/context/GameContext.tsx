@@ -67,7 +67,7 @@ export const LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
     name: 'Maelstrom Staff',
     type: 'weapon',
     weight: 'none',
-    stats: { damage: 7, magic: 20, chainChance: 0.80 },
+    stats: { damage: 7, magic: 20, chainChance: 0.40 },
     affixes: ['Lightning Nova: Attacks chain lightning to 2 additional targets']
   },
   {
@@ -296,10 +296,59 @@ export const LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
   }
 ];
 
+// Biome-specific armor names: BIOME_ARMOR_NAMES[biome][slot][weight]
+const BIOME_ARMOR_NAMES: Record<number, Record<EquipmentSlot, Record<'light' | 'heavy', string>>> = {
+  1: {
+    helm:      { light: 'Coif',           heavy: 'Casque' },
+    shoulders: { light: 'Shawl',          heavy: 'Pauldrons' },
+    chest:     { light: 'Vest',           heavy: 'Cuirass' },
+    pants:     { light: 'Breeches',       heavy: 'Cuisses' },
+    boots:     { light: 'Sandals',        heavy: 'Ironshods' },
+    gloves:    { light: 'Gloves',         heavy: 'Gauntlets' },
+    weapon:    { light: '', heavy: '' },
+  },
+  2: {
+    helm:      { light: 'Hood',           heavy: 'Helm' },
+    shoulders: { light: 'Mantle',         heavy: 'Rerebrace' },
+    chest:     { light: 'Tunic',          heavy: 'Hauberk' },
+    pants:     { light: 'Leggings',       heavy: 'Greaves' },
+    boots:     { light: 'Slippers',       heavy: 'Sabatons' },
+    gloves:    { light: 'Wraps',          heavy: 'Rerebraces' },
+    weapon:    { light: '', heavy: '' },
+  },
+  3: {
+    helm:      { light: 'Cap',            heavy: 'Crown' },
+    shoulders: { light: 'Wrap',           heavy: 'Spaulders' },
+    chest:     { light: 'Jerkin',         heavy: 'Breastplate' },
+    pants:     { light: 'Trousers',       heavy: 'Leg Guards' },
+    boots:     { light: 'Turnshoes',      heavy: 'Greaves' },
+    gloves:    { light: 'Bracers',        heavy: 'Plate Fists' },
+    weapon:    { light: '', heavy: '' },
+  },
+  4: {
+    helm:      { light: 'Visor',          heavy: 'Basinet' },
+    shoulders: { light: 'Epaulets',       heavy: 'Vambraces' },
+    chest:     { light: 'Doublet',        heavy: 'Mail' },
+    pants:     { light: 'Hose',           heavy: 'Faulds' },
+    boots:     { light: 'Sneakers',       heavy: 'Treads' },
+    gloves:    { light: 'Handwraps',      heavy: 'Warfists' },
+    weapon:    { light: '', heavy: '' },
+  },
+  5: {
+    helm:      { light: 'Veil',           heavy: 'Great Helm' },
+    shoulders: { light: 'Cape',           heavy: 'Mail Shoulders' },
+    chest:     { light: 'Raiment',        heavy: 'Plate' },
+    pants:     { light: 'Chausses',       heavy: 'Tassets' },
+    boots:     { light: 'Crocks',         heavy: 'Stompers' },
+    gloves:    { light: 'Mitts',          heavy: 'Fists' },
+    weapon:    { light: '', heavy: '' },
+  },
+};
+
 // Helper to generate items
-export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], allowLegendary = true, excludeNames?: Set<string>): Item => {
+export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], allowLegendary = true, excludeNames?: Set<string>, legendaryPityBonus = 0, forceType?: EquipmentSlot, biome?: number): Item => {
   const types: EquipmentSlot[] = ['helm', 'shoulders', 'chest', 'pants', 'boots', 'gloves', 'weapon'];
-  const type = types[Math.floor(Math.random() * types.length)];
+  const type = forceType ?? types[Math.floor(Math.random() * types.length)];
   
   let rarity: Item['rarity'] = 'Common';
   if (forceRarity) {
@@ -316,8 +365,9 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], 
     };
     const t = rarityThresholds[biomeLevel];
     const roll = Math.random() * 100;
-    if (roll > t.epic && allowLegendary) rarity = 'Legendary';
-    else if (roll > t.rare || (roll > t.epic && !allowLegendary)) rarity = 'Epic';
+    const effectiveEpicThreshold = t.epic - legendaryPityBonus;
+    if (roll > effectiveEpicThreshold && allowLegendary) rarity = 'Legendary';
+    else if (roll > t.rare || (roll > effectiveEpicThreshold && !allowLegendary)) rarity = 'Epic';
     else if (roll > t.uncommon) rarity = 'Rare';
     else if (roll > t.common) rarity = 'Uncommon';
   }
@@ -371,20 +421,24 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], 
   
   const weight = type === 'weapon' ? 'none' : (Math.random() > 0.5 ? 'heavy' : 'light');
 
-  const nameMap: Record<EquipmentSlot, string> = {
-    helm: weight === 'heavy' ? 'Plate Greathelm' : 'Leather Hood',
-    shoulders: weight === 'heavy' ? 'Steel Pauldrons' : 'Cloth Shoulders',
-    chest: weight === 'heavy' ? 'Cuirass of Iron' : 'Ranger Tunic',
-    pants: weight === 'heavy' ? 'Iron Greaves' : 'Cloth Leggings',
-    boots: weight === 'heavy' ? 'Sabatons' : 'Swift Boots',
-    gloves: weight === 'heavy' ? 'Gauntlets' : 'Vagrant Gloves',
-    weapon: 'Slayer Blade' // will be customized below
-  };
-
-  let name = nameMap[type];
+  let name: string;
   if (type === 'weapon') {
     const weapons = ['Greatsword', 'Composite Bow', 'Glow Staff', 'Twin Daggers', 'Heavy Shield', 'Druid Branch', 'Skull Wand'];
     name = weapons[Math.floor(Math.random() * weapons.length)];
+  } else if (biome && BIOME_ARMOR_NAMES[biome]?.[type]?.[weight as 'light' | 'heavy']) {
+    name = BIOME_ARMOR_NAMES[biome][type][weight as 'light' | 'heavy'];
+  } else {
+    // Fallback for missing biome
+    const fallbackNames: Record<EquipmentSlot, string> = {
+      helm: weight === 'heavy' ? 'Helm' : 'Cap',
+      shoulders: weight === 'heavy' ? 'Pauldrons' : 'Shawl',
+      chest: weight === 'heavy' ? 'Cuirass' : 'Vest',
+      pants: weight === 'heavy' ? 'Greaves' : 'Leggings',
+      boots: weight === 'heavy' ? 'Sabatons' : 'Sandals',
+      gloves: weight === 'heavy' ? 'Gauntlets' : 'Gloves',
+      weapon: 'Blade',
+    };
+    name = fallbackNames[type];
   }
 
   name = suffix ? `${name} ${suffix}` : name;
@@ -397,27 +451,102 @@ export const generateRandomItem = (level: number, forceRarity?: Item['rarity'], 
     stats.damage = Math.round((4 + Math.random() * 1.5) * scalar);
     stats.atkSpeed = parseFloat((0.9 + Math.random() * 0.4).toFixed(2));
   } else {
-    stats.armor = Math.round((2 + Math.random() * 4) * scalar * (weight === 'heavy' ? 1.5 : 0.8));
-    stats.hp = Math.round((15 + Math.random() * 5) * scalar * (weight === 'heavy' ? 1.3 : 0.9));
+    if (weight === 'heavy') {
+      stats.armor = Math.round((2 + Math.random() * 4) * scalar * 1.5);
+      stats.hp = Math.round((15 + Math.random() * 5) * scalar * 1.5);
+      stats.speed = -3;
+      stats.atkSpeed = 0.97;
+    } else {
+      stats.armor = Math.round((2 + Math.random() * 4) * scalar * 0.25);
+      stats.hp = Math.round((15 + Math.random() * 5) * scalar * 0.5);
+      stats.speed = 3;
+      stats.atkSpeed = 1.03;
+    }
   }
 
-  // Suffix/Rarity Stats
+  // Suffix/Rarity Stats — each suffix grants thematic bonuses matching its name
   const affixes: string[] = [];
-  if (rarity !== 'Common') {
-    stats.critChance = Math.round(3 + Math.random() * 5);
-    affixes.push(`+${stats.critChance}% Critical Strike Chance`);
-  }
-  if (rarity === 'Rare' || rarity === 'Epic') {
-    stats.lifeSteal = parseFloat((0.01 + Math.random() * 0.01).toFixed(3));
-    affixes.push(`+${Math.round(stats.lifeSteal * 100)}% Life Steal on Hit`);
-    stats.speed = Math.round(5 + Math.random() * 10);
-    affixes.push(`+${stats.speed}% Movement Speed`);
-  }
-  if (rarity === 'Epic') {
-    stats.atkCooldownReduction = parseFloat((0.05 + Math.random() * 0.07).toFixed(3));
-    affixes.push(`+${Math.round(stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`);
-    stats.chainChance = parseFloat((0.10 + Math.random() * 0.15).toFixed(2));
-    affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
+  if (rarity === 'Uncommon') {
+    if (suffix === 'of Vitality') {
+      stats.hp = Math.round((8 + Math.random() * 4) * scalar);
+    } else if (suffix === 'of Defiance') {
+      stats.armor = Math.round((1.5 + Math.random() * 1) * scalar);
+      affixes.push(`+${stats.armor} Armor`);
+    } else if (suffix === 'of Haste') {
+      if (type === 'weapon') {
+        stats.atkSpeed = parseFloat((0.10 + Math.random() * 0.10).toFixed(2));
+        affixes.push(`+${Math.round(stats.atkSpeed * 100)}% Attack Speed`);
+      } else if (weight === 'heavy') {
+        stats.armor = Math.round((2 + Math.random() * 1.5) * scalar);
+        affixes.push(`+${stats.armor} Armor`);
+      } else {
+        const bonus = Math.round(5 + Math.random() * 5);
+        stats.speed = (stats.speed ?? 0) + bonus;
+        affixes.push(`+${bonus}% Movement Speed`);
+      }
+    } else if (suffix === 'of Striking') {
+      if (type === 'weapon') {
+        stats.damage = Math.round((2 + Math.random() * 1) * scalar);
+        affixes.push(`+${stats.damage} Flat Damage`);
+      } else {
+        stats.critChance = Math.round(3 + Math.random() * 2);
+        affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+      }
+    }
+  } else if (rarity === 'Rare') {
+    if (suffix === 'of Vampirism') {
+      stats.lifeSteal = parseFloat((0.015 + Math.random() * 0.01).toFixed(3));
+      affixes.push(`+${Math.round(stats.lifeSteal * 100)}% Life Steal on Hit`);
+      stats.critChance = Math.round(4 + Math.random() * 2);
+      affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+    } else if (suffix === 'of Fortune') {
+      stats.critChance = Math.round(5 + Math.random() * 3);
+      affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+      stats.hp = Math.round((10 + Math.random() * 4) * scalar);
+    } else if (suffix === 'of Cleansing') {
+      stats.hp = Math.round((10 + Math.random() * 4) * scalar);
+      stats.armor = Math.round((2 + Math.random() * 1) * scalar);
+      affixes.push(`+${stats.armor} Armor`);
+    } else if (suffix === 'of Focus') {
+      stats.atkCooldownReduction = parseFloat((0.04 + Math.random() * 0.03).toFixed(3));
+      affixes.push(`+${Math.round(stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`);
+      stats.critChance = Math.round(4 + Math.random() * 2);
+      affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+    }
+  } else if (rarity === 'Epic') {
+    if (suffix === 'of Chain Lightning') {
+      stats.chainChance = parseFloat((0.06 + Math.random() * 0.04).toFixed(2));
+      affixes.push(`${Math.round(stats.chainChance * 100)}% Chain Lightning Chance on Hit`);
+      stats.atkCooldownReduction = parseFloat((0.06 + Math.random() * 0.04).toFixed(3));
+      affixes.push(`+${Math.round(stats.atkCooldownReduction * 100)}% Attack Cooldown Reduction`);
+      stats.critChance = Math.round(5 + Math.random() * 3);
+      affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+    } else if (suffix === 'of Frozen Ice') {
+      if (weight !== 'heavy') {
+        const bonus = Math.round(8 + Math.random() * 5);
+        stats.speed = (stats.speed ?? 0) + bonus;
+        affixes.push(`+${bonus}% Movement Speed`);
+      }
+      stats.critChance = Math.round(5 + Math.random() * 3);
+      affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+      stats.hp = Math.round((12 + Math.random() * 5) * scalar);
+    } else if (suffix === 'of Burning Embers') {
+      if (type === 'weapon') {
+        stats.damage = Math.round((3 + Math.random() * 2) * scalar);
+        affixes.push(`+${stats.damage} Flat Damage`);
+      } else {
+        stats.critChance = Math.round(5 + Math.random() * 3);
+        affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+      }
+      stats.lifeSteal = parseFloat((0.015 + Math.random() * 0.01).toFixed(3));
+      affixes.push(`+${Math.round(stats.lifeSteal * 100)}% Life Steal on Hit`);
+      if (type !== 'weapon') {
+        stats.critChance = stats.critChance || Math.round(4 + Math.random() * 2);
+        if (!affixes.some(a => a.includes('Critical'))) {
+          affixes.push(`+${stats.critChance}% Critical Strike Chance`);
+        }
+      }
+    }
   }
 
   return {
@@ -492,6 +621,12 @@ interface GameContextProps {
   skipTownTutorial: () => void;
   resetTownTutorial: () => void;
   
+  // Boss encounter tracking (persistent across runs)
+  bossesBeaten: Record<string, boolean>;
+  setBossesBeaten: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  bossEncounterCounts: Record<string, number>;
+  setBossEncounterCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+
   // Bench / Barracks management
   buyLateGameMercenary: (heroClass: HeroClass) => void;
 
@@ -508,6 +643,9 @@ interface GameContextProps {
     totalHeroesCount: number;
     squadClasses: string[];
   };
+
+  legendaryPityCounter: number;
+  setLegendaryPityCounter: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const INITIAL_ROSTER: Hero[] = [
@@ -633,6 +771,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeRun, setActiveRun] = useState<DungeonRun | null>(null);
   const [completedRunSummary, setCompletedRunSummary] = useState<CompletedRunSummary | null>(null);
   const [activeDialogue, setActiveDialogue] = useState<DialogueLine[] | null>(null);
+  const [legendaryPityCounter, setLegendaryPityCounter] = useState<number>(0);
+  const [bossesBeaten, setBossesBeaten] = useState<Record<string, boolean>>({});
+  const [bossEncounterCounts, setBossEncounterCounts] = useState<Record<string, number>>({});
   const dialogueQueue = useRef<DialogueLine[][]>([]);
 
   // Shop temporary buffs applied to the next run
@@ -653,12 +794,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(`${slotPrefix}gl_temperaments`, JSON.stringify(temperaments));
     localStorage.setItem(`${slotPrefix}gl_shopInventory`, JSON.stringify(shopInventory));
     localStorage.setItem(`${slotPrefix}gl_questState`, JSON.stringify(questState));
+    localStorage.setItem(`${slotPrefix}gl_legendaryPityCounter`, String(legendaryPityCounter));
+    localStorage.setItem(`${slotPrefix}gl_bossesBeaten`, JSON.stringify(bossesBeaten));
+    localStorage.setItem(`${slotPrefix}gl_bossEncounterCounts`, JSON.stringify(bossEncounterCounts));
     if (activeRun) {
       localStorage.setItem(`${slotPrefix}gl_activeRun`, JSON.stringify(activeRun));
     } else {
       localStorage.removeItem(`${slotPrefix}gl_activeRun`);
     }
-  }, [roster, sharedBag, gold, runsCount, restockCount, squad, temperaments, shopInventory, questState, activeRun, activeSlot]);
+  }, [roster, sharedBag, gold, runsCount, restockCount, squad, temperaments, shopInventory, questState, activeRun, activeSlot, legendaryPityCounter, bossesBeaten, bossEncounterCounts]);
 
   // Initial shop roll
   useEffect(() => {
@@ -790,7 +934,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       : { chefQuestStep: 0, townTutorialStep: 0 }
     );
 
-    // 8. Active Run
+    // 8. Legendary Pity Counter
+    const savedPity = localStorage.getItem(`${slotPrefix}gl_legendaryPityCounter`);
+    setLegendaryPityCounter(savedPity ? Number(savedPity) : 0);
+
+    // 9. Boss State
+    const savedBossesBeaten = localStorage.getItem(`${slotPrefix}gl_bossesBeaten`);
+    setBossesBeaten(savedBossesBeaten ? JSON.parse(savedBossesBeaten) : {});
+    const savedBossEncounters = localStorage.getItem(`${slotPrefix}gl_bossEncounterCounts`);
+    setBossEncounterCounts(savedBossEncounters ? JSON.parse(savedBossEncounters) : {});
+
+    // 10. Active Run
     const savedRun = localStorage.getItem(`${slotPrefix}gl_activeRun`);
     setActiveRun(savedRun ? JSON.parse(savedRun) : null);
 
@@ -811,6 +965,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(`${slotPrefix}gl_temperaments`);
     localStorage.removeItem(`${slotPrefix}gl_shopInventory`);
     localStorage.removeItem(`${slotPrefix}gl_questState`);
+    localStorage.removeItem(`${slotPrefix}gl_legendaryPityCounter`);
+    localStorage.removeItem(`${slotPrefix}gl_bossesBeaten`);
+    localStorage.removeItem(`${slotPrefix}gl_bossEncounterCounts`);
     localStorage.removeItem(`${slotPrefix}gl_activeRun`);
 
     if (activeSlot === slotNum) {
@@ -876,7 +1033,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Roster / Squad management
   const addToSquad = (heroId: string) => {
     const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
-    const maxSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
+    const wizardUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
+    const maxSlots = (warriorUnlocked && wizardUnlocked) ? 3 : (warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3));
     if (squad.length >= maxSlots) return;
     if (squad.includes(heroId)) return;
     
@@ -896,7 +1054,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const assignHeroToSlot = (slotIndex: number, heroId: string | null) => {
     const warriorUnlocked = roster.find(h => h.character_id === 'hero_warrior')?.unlocked;
-    const maxSlots = warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3);
+    const wizardUnlocked = roster.find(h => h.character_id === 'hero_wizard')?.unlocked;
+    const maxSlots = (warriorUnlocked && wizardUnlocked) ? 3 : (warriorUnlocked ? Math.max(2, runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3) : (runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3));
     if (slotIndex >= maxSlots) return; // locked
 
     let newSquad = [...squad];
@@ -1072,6 +1231,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const rerollAffix = (itemId: string, affixIndex: number, location: 'bag' | 'hero', heroId?: string) => {
     const item = getItemRef(itemId, location, heroId);
     if (!item) throw new Error("Item not found");
+    if (item.rarity === 'Legendary') throw new Error("Legendary items cannot be rerolled.");
 
     const rerollCount = item.rerollCount || 0;
     
@@ -1179,7 +1339,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Common: '',
       Uncommon: `+${Math.round(3 + Math.random() * 4)}% Critical Strike Chance`,
       Rare: `+2% Life Steal on Hit`,
-      Epic: `+12% Chain Lightning Chance on Hit`,
+      Epic: `+5% Chain Lightning Chance on Hit`,
       Legendary: `+20 Magic Power (Signature Trait)`
     };
 
@@ -1193,7 +1353,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Update internal stats structure
     if (nextRarity === 'Uncommon') updatedItem.stats.critChance = 5;
     if (nextRarity === 'Rare') updatedItem.stats.lifeSteal = 0.02;
-    if (nextRarity === 'Epic') updatedItem.stats.chainChance = 0.12;
+    if (nextRarity === 'Epic') updatedItem.stats.chainChance = 0.05;
     if (nextRarity === 'Legendary') updatedItem.stats.magic = 20;
 
     updateItemInLocation(updatedItem, location, heroId);
@@ -1263,11 +1423,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRestockCount(c => c + 1);
     }
 
-        // Generate 4 items and 2 consumables
+        // Generate 4 items and 2 consumables (75% chance one slot is a weapon)
     const items: Item[] = [];
     const level = Math.max(1, Math.floor(runsCount / 2) + 1);
+    const shopBiome = Math.min(5, Math.max(1, level));
+    const weaponSlot = Math.random() < 0.75 ? Math.floor(Math.random() * 4) : -1;
     for (let i = 0; i < 4; i++) {
-      items.push(generateRandomItem(level, undefined, false));
+      if (i === weaponSlot) {
+        items.push(generateRandomItem(level, undefined, false, undefined, 0, 'weapon', shopBiome));
+      } else {
+        items.push(generateRandomItem(level, undefined, false, undefined, 0, undefined, shopBiome));
+      }
     }
     // Add two slots for consumables:
     // Scroll of Resurrection
@@ -1734,6 +1900,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Auto-fire Step 1 tutorial on first hub load
   const tutorialFiredRef = useRef(false);
+
+  // Reset tutorial fired status when changing slots or returning to main menu
+  useEffect(() => {
+    tutorialFiredRef.current = false;
+  }, [activeSlot]);
+
   useEffect(() => {
     if (activeSlot === null || activeRun !== null) return;
     if (questState.townTutorialStep === 0 && !tutorialFiredRef.current) {
@@ -1828,7 +2000,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       setSquad(prev => {
         const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
-        const updatedMaxSlots = Math.max(2, maxSlots);
+        const updatedMaxSlots = Math.max(3, maxSlots);
         if (prev.length < updatedMaxSlots && !prev.includes('hero_warrior')) {
           return [...prev, 'hero_warrior'];
         }
@@ -1844,7 +2016,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         {
           speaker: "Town Chef",
           portrait: import.meta.env.BASE_URL + "warrior_chef.png",
-          text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+          text: "I was worried sick. She told me your squad braved the depths and vanquished the mighty Gar Gar Gorilla to free her."
         },
         {
           speaker: "Town Chef",
@@ -1863,7 +2035,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
         setSquad(prev => {
           const maxSlots = runsCount < 3 ? 1 : runsCount < 5 ? 2 : 3;
-          const updatedMaxSlots = Math.max(2, maxSlots);
+          const updatedMaxSlots = Math.max(3, maxSlots);
           if (prev.length < updatedMaxSlots && !prev.includes('hero_warrior')) {
             return [...prev, 'hero_warrior'];
           }
@@ -1879,7 +2051,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           {
             speaker: "Town Chef",
             portrait: import.meta.env.BASE_URL + "warrior_chef.png",
-            text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+            text: "I was worried sick. She told me your squad braved the depths and vanquished the mighty Gar Gar Gorilla to free her."
           },
           {
             speaker: "Town Chef",
@@ -1996,7 +2168,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         {
           speaker: "Town Chef",
           portrait: "/warrior_chef.png",
-          text: "I was worried sick. She told me your squad braved the depths and vanquished the Gorgon Overlord to free her."
+          text: "I was worried sick. She told me your squad braved the depths and vanquished the mighty Gar Gar Gorilla to free her."
         },
         {
           speaker: "Town Chef",
@@ -2205,7 +2377,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loadSaveSlot,
       deleteSaveSlot,
       returnToMainMenu,
-      getSaveSlotSummary
+      getSaveSlotSummary,
+
+      legendaryPityCounter,
+      setLegendaryPityCounter,
+
+      bossesBeaten,
+      setBossesBeaten,
+      bossEncounterCounts,
+      setBossEncounterCounts
     }}>
       {children}
     </GameContext.Provider>

@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
+import type { Item } from '../../types/game';
+import { ItemTooltip } from '../Hub/ItemTooltip';
 import { Coins, Award, Sparkles, Home, ShieldAlert, CheckCircle2, Sword } from 'lucide-react';
 
 export const RunSummaryModal: React.FC = () => {
@@ -8,6 +10,22 @@ export const RunSummaryModal: React.FC = () => {
   if (!completedRunSummary) return null;
 
   const { success, goldScavenged, itemsAcquired, powerupsSelected, currentBiome, currentChamber, heroDamageDealt } = completedRunSummary;
+
+  const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
+  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseEnterItem = (item: Item, e: React.MouseEvent) => {
+    setHoveredItem(item);
+    setMouseCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseLeaveItem = () => {
+    setHoveredItem(null);
+  };
 
   const handleReturn = () => {
     closeRunSummary();
@@ -114,6 +132,9 @@ export const RunSummaryModal: React.FC = () => {
                 <div
                   key={idx}
                   className={`summary-loot-card border-rarity-${item.rarity.toLowerCase()}`}
+                  onMouseEnter={(e) => handleMouseEnterItem(item, e)}
+                  onMouseMove={handleMouseMove}
+                  onMouseLeave={handleMouseLeaveItem}
                 >
                   <div className="summary-loot-header">
                     <span className={`summary-loot-name ${
@@ -143,6 +164,7 @@ export const RunSummaryModal: React.FC = () => {
           </button>
         </div>
       </div>
+      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
     </div>
   );
 };

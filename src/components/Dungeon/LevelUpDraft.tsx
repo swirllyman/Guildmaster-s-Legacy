@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { POWERUP_DESCRIPTIONS } from '../../types/game';
 import { Shield, Sparkles, Sword, Heart, Activity, Zap, Layers } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export const LevelUpDraft: React.FC = () => {
   const { activeRun, roster, triggerDraftChoice } = useGame();
+  const isMobile = useIsMobile();
 
   const [isAutoDraftActive, setIsAutoDraftActive] = useState<boolean>(() => {
     return localStorage.getItem('autoDraftActive') === 'true';
@@ -174,111 +176,160 @@ export const LevelUpDraft: React.FC = () => {
         </div>
 
         {/* Squad Status & Selected Powerups Dashboard */}
-        <div className="draft-status-dashboard">
-          {/* Left Panel: Current Party Health */}
-          <div className="draft-status-panel">
-            <div className="draft-panel-header">
-              <span className="draft-panel-title">
-                <Heart size={14} className="text-red-400 animate-pulse" /> Current Party Health
-              </span>
-              <span className="draft-panel-badge">
-                {Object.keys(activeRun.livingSquad).filter(id => activeRun.livingSquad[id].hp > 0).length} Alive
-              </span>
-            </div>
-            
-            <div className="draft-hp-list">
+        {/* Squad Status & Selected Powerups Dashboard */}
+        {isMobile ? (
+          <div className="mobile-draft-dashboard">
+            {/* Concise Party Health */}
+            <div className="mobile-draft-health-row">
               {Object.keys(activeRun.livingSquad).map(id => {
                 const hero = roster.find(h => h.character_id === id);
                 if (!hero) return null;
                 const runHero = activeRun.livingSquad[id];
                 const isDead = runHero.hp <= 0;
                 const hpRatio = Math.max(0, Math.min(1, runHero.hp / runHero.maxHp));
-                const displayClass = hero.class === 'WIZARD' ? 'SORCERESS' : hero.class;
-
+                const displayClass = hero.class === 'WIZARD' ? 'SORC' : hero.class.slice(0, 3).toUpperCase();
+                
                 return (
-                  <div key={id} className={`draft-hp-row ${isDead ? 'deceased' : ''}`}>
-                    <img 
-                      src={getAvatarPath(hero.class)} 
-                      alt={displayClass} 
-                      className="draft-hp-avatar" 
-                    />
-                    <div className="draft-hp-info">
-                      <div className="draft-hp-top-line">
-                        <span className="draft-hp-name">{displayClass}</span>
-                        <span className={`draft-hp-numbers ${isDead ? 'text-red-500 font-bold' : ''}`}>
-                          {isDead ? 'DECEASED' : `${runHero.hp} / ${runHero.maxHp} HP`}
-                        </span>
-                      </div>
-                      <div className="draft-hp-bar-bg">
-                        <div 
-                          className="draft-hp-bar-fill" 
-                          style={{ 
-                            width: `${hpRatio * 100}%`,
-                            background: hpRatio > 0.5 
-                              ? 'linear-gradient(90deg, #10b981, #34d399)' 
-                              : hpRatio > 0.2 
-                              ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' 
-                              : 'linear-gradient(90deg, #ef4444, #f87171)'
-                          }} 
-                        />
-                      </div>
+                  <div key={id} className={`mobile-draft-health-item ${isDead ? 'dead' : ''}`}>
+                    <span className="mobile-draft-health-abbr">{displayClass}</span>
+                    <div className="mobile-draft-health-bar-bg">
+                      <div 
+                        className="mobile-draft-health-bar-fill" 
+                        style={{ 
+                          width: `${hpRatio * 100}%`,
+                          background: hpRatio > 0.5 ? '#10b981' : hpRatio > 0.2 ? '#f59e0b' : '#ef4444'
+                        }} 
+                      />
                     </div>
+                    <span className="mobile-draft-health-txt">{isDead ? 'KO' : `${Math.round(hpRatio * 100)}%`}</span>
                   </div>
                 );
               })}
             </div>
-          </div>
 
-          {/* Right Panel: Current Powerups Drafted */}
-          <div className="draft-status-panel">
-            <div className="draft-panel-header">
-              <span className="draft-panel-title">
-                <Layers size={14} className="text-purple-400" /> Active Powerups Drafted
-              </span>
-              <span className="draft-panel-badge gold">
-                {selectedPowerups.length} Total
-              </span>
+            {/* Concise Active Powerups */}
+            <div className="mobile-draft-powerups-summary">
+              <span className="mobile-draft-powerups-label">Powerups:</span>
+              <div className="mobile-draft-powerups-list">
+                {Object.keys(stackedPowerups).length === 0 ? (
+                  <span className="mobile-draft-powerup-item-empty">None</span>
+                ) : (
+                  Object.entries(stackedPowerups).map(([powerup, count]) => (
+                    <span key={powerup} className="mobile-draft-powerup-item">
+                      {powerup} {count > 1 ? `x${count}` : ''}
+                    </span>
+                  ))
+                )}
+              </div>
             </div>
-
-            <div className="draft-powerups-list">
-              {Object.keys(stackedPowerups).length === 0 ? (
-                <div className="draft-powerups-empty">
-                  <span>No persistent powerups drafted yet.</span>
-                </div>
-              ) : (
-                Object.entries(stackedPowerups).map(([powerup, count], idx) => {
-                   const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
-                   const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block') || powerup.includes('Ursine') || powerup.includes('Devotion') || powerup.includes('Evasive'));
-                   const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge') || powerup.includes('Feral') || powerup.includes('Horde') || powerup.includes('Magi') || powerup.includes('Explosion') || powerup.includes('Shadowstep') || powerup.includes('Adrenaline'));
-                   const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike') || powerup.includes('Clarity') || powerup.includes('Aura') || powerup.includes('Poisoning'));
-                   const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind') || powerup.includes('Shift'));
-                  const desc = POWERUP_DESCRIPTIONS[powerup] || 'Active team enhancement';
+          </div>
+        ) : (
+          <div className="draft-status-dashboard">
+            {/* Left Panel: Current Party Health */}
+            <div className="draft-status-panel">
+              <div className="draft-panel-header">
+                <span className="draft-panel-title">
+                  <Heart size={14} className="text-red-400 animate-pulse" /> Current Party Health
+                </span>
+                <span className="draft-panel-badge">
+                  {Object.keys(activeRun.livingSquad).filter(id => activeRun.livingSquad[id].hp > 0).length} Alive
+                </span>
+              </div>
+              
+              <div className="draft-hp-list">
+                {Object.keys(activeRun.livingSquad).map(id => {
+                  const hero = roster.find(h => h.character_id === id);
+                  if (!hero) return null;
+                  const runHero = activeRun.livingSquad[id];
+                  const isDead = runHero.hp <= 0;
+                  const hpRatio = Math.max(0, Math.min(1, runHero.hp / runHero.maxHp));
+                  const displayClass = hero.class === 'WIZARD' ? 'SORCERESS' : hero.class;
 
                   return (
-                    <div 
-                      key={`${powerup}-${idx}`}
-                      className="draft-powerup-pill"
-                    >
-                      {isSynergy && <Layers className="text-fuchsia-400 flex-shrink-0" size={13} />}
-                      {isDefense && <Shield className="text-blue-400 flex-shrink-0" size={13} />}
-                      {isAttack && <Sword className="text-green-400 flex-shrink-0" size={13} />}
-                      {isMagic && <Zap className="text-purple-400 flex-shrink-0" size={13} />}
-                      {isHeal && <Heart className="text-red-400 flex-shrink-0" size={13} />}
-                      {!isSynergy && !isDefense && !isAttack && !isMagic && !isHeal && <Sparkles className="text-amber-400 flex-shrink-0" size={13} />}
-                      
-                      <span className="draft-powerup-pill-name">{powerup}</span>
-                      {count > 1 && <span className="draft-powerup-pill-badge">x{count}</span>}
-
-                      <div className="draft-powerup-tooltip">
-                        {desc}
+                    <div key={id} className={`draft-hp-row ${isDead ? 'deceased' : ''}`}>
+                      <img 
+                        src={getAvatarPath(hero.class)} 
+                        alt={displayClass} 
+                        className="draft-hp-avatar" 
+                      />
+                      <div className="draft-hp-info">
+                        <div className="draft-hp-top-line">
+                          <span className="draft-hp-name">{displayClass}</span>
+                          <span className={`draft-hp-numbers ${isDead ? 'text-red-500 font-bold' : ''}`}>
+                            {isDead ? 'DECEASED' : `${runHero.hp} / ${runHero.maxHp} HP`}
+                          </span>
+                        </div>
+                        <div className="draft-hp-bar-bg">
+                          <div 
+                            className="draft-hp-bar-fill" 
+                            style={{ 
+                              width: `${hpRatio * 100}%`,
+                              background: hpRatio > 0.5 
+                                ? 'linear-gradient(90deg, #10b981, #34d399)' 
+                                : hpRatio > 0.2 
+                                ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' 
+                                : 'linear-gradient(90deg, #ef4444, #f87171)'
+                            }} 
+                          />
+                        </div>
                       </div>
                     </div>
                   );
-                })
-              )}
+                })}
+              </div>
+            </div>
+
+            {/* Right Panel: Current Powerups Drafted */}
+            <div className="draft-status-panel">
+              <div className="draft-panel-header">
+                <span className="draft-panel-title">
+                  <Layers size={14} className="text-purple-400" /> Active Powerups Drafted
+                </span>
+                <span className="draft-panel-badge gold">
+                  {selectedPowerups.length} Total
+                </span>
+              </div>
+
+              <div className="draft-powerups-list">
+                {Object.keys(stackedPowerups).length === 0 ? (
+                  <div className="draft-powerups-empty">
+                    <span>No persistent powerups drafted yet.</span>
+                  </div>
+                ) : (
+                  Object.entries(stackedPowerups).map(([powerup, count], idx) => {
+                     const isSynergy = ['Marked for Death', 'Quick Burn', 'Fire Armor'].includes(powerup);
+                     const isDefense = !isSynergy && (powerup.includes('Shield') || powerup.includes('Defense') || powerup.includes('Will') || powerup.includes('Iron') || powerup.includes('Block') || powerup.includes('Ursine') || powerup.includes('Devotion') || powerup.includes('Evasive'));
+                     const isAttack = !isSynergy && (powerup.includes('Shot') || powerup.includes('Sharpshooter') || powerup.includes('Slam') || powerup.includes('Blade') || powerup.includes('Poison') || powerup.includes('Charge') || powerup.includes('Feral') || powerup.includes('Horde') || powerup.includes('Magi') || powerup.includes('Explosion') || powerup.includes('Shadowstep') || powerup.includes('Adrenaline'));
+                     const isMagic = !isSynergy && (powerup.includes('Mana') || powerup.includes('Fireball') || powerup.includes('Strike') || powerup.includes('Clarity') || powerup.includes('Aura') || powerup.includes('Poisoning'));
+                     const isHeal = !isSynergy && (powerup.includes('Rejuvenate') || powerup.includes('Second Wind') || powerup.includes('Shift'));
+                    const desc = POWERUP_DESCRIPTIONS[powerup] || 'Active team enhancement';
+
+                    return (
+                      <div 
+                        key={`${powerup}-${idx}`}
+                        className="draft-powerup-pill"
+                      >
+                        {isSynergy && <Layers className="text-fuchsia-400 flex-shrink-0" size={13} />}
+                        {isDefense && <Shield className="text-blue-400 flex-shrink-0" size={13} />}
+                        {isAttack && <Sword className="text-green-400 flex-shrink-0" size={13} />}
+                        {isMagic && <Zap className="text-purple-400 flex-shrink-0" size={13} />}
+                        {isHeal && <Heart className="text-red-400 flex-shrink-0" size={13} />}
+                        {!isSynergy && !isDefense && !isAttack && !isMagic && !isHeal && <Sparkles className="text-amber-400 flex-shrink-0" size={13} />}
+                        
+                        <span className="draft-powerup-pill-name">{powerup}</span>
+                        {count > 1 && <span className="draft-powerup-pill-badge">x{count}</span>}
+
+                        <div className="draft-powerup-tooltip">
+                          {desc}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 3-Card Array */}
         <div className="draft-cards-grid">

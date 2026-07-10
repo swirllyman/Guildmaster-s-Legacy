@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Play, Settings, Trash2, Volume2, ShieldAlert, Sparkles, RotateCcw } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export const MainMenu: React.FC = () => {
   const {
@@ -13,6 +14,8 @@ export const MainMenu: React.FC = () => {
   const [view, setView] = useState<'main' | 'play' | 'options'>('main');
   const [deleteConfirmSlot, setDeleteConfirmSlot] = useState<number | null>(null);
   const [resetConfirm, setResetConfirm] = useState<boolean>(false);
+  const isMobile = useIsMobile();
+  const [selectedMobileSlot, setSelectedMobileSlot] = useState<number>(1);
 
   // Options State
   const [sfxVolume, setSfxVolume] = useState(() => Number(localStorage.getItem('gl_opt_sfxVolume') || '80'));
@@ -90,16 +93,16 @@ export const MainMenu: React.FC = () => {
               <h3 className="menu-panel-title">✦ Choose Save Slot ✦</h3>
               
               <div className="save-slots-grid">
-                {[1, 2, 3].map(slotNum => {
-                  const summary = getSaveSlotSummary(slotNum);
+                {isMobile ? (() => {
+                  const summary = getSaveSlotSummary(selectedMobileSlot);
                   return (
-                    <div key={slotNum} className="save-slot-wrapper">
+                    <div className="save-slot-wrapper mobile-active-slot">
                       {summary.empty ? (
                         <div 
                           className="save-slot-card empty hover:scale-102 transition duration-200 cursor-pointer"
-                          onClick={() => loadSaveSlot(slotNum)}
+                          onClick={() => loadSaveSlot(selectedMobileSlot)}
                         >
-                          <div className="slot-number-badge">Slot {slotNum}</div>
+                          <div className="slot-number-badge">Slot {selectedMobileSlot}</div>
                           <Sparkles size={24} className="text-gray-600 mb-2 animate-pulse" />
                           <span className="slot-empty-title">Empty Save</span>
                           <span className="slot-empty-desc">Begin a fresh adventure</span>
@@ -107,9 +110,9 @@ export const MainMenu: React.FC = () => {
                       ) : (
                         <div 
                           className="save-slot-card occupied hover:scale-102 transition duration-200 cursor-pointer"
-                          onClick={() => loadSaveSlot(slotNum)}
+                          onClick={() => loadSaveSlot(selectedMobileSlot)}
                         >
-                          <div className="slot-number-badge occupied">Slot {slotNum}</div>
+                          <div className="slot-number-badge occupied">Slot {selectedMobileSlot}</div>
                           
                           {/* Squad circles */}
                           <div className="slot-squad-row">
@@ -152,14 +155,99 @@ export const MainMenu: React.FC = () => {
                       
                       <button 
                         disabled={summary.empty}
-                        onClick={() => setDeleteConfirmSlot(slotNum)}
+                        onClick={() => setDeleteConfirmSlot(selectedMobileSlot)}
                         className={`slot-delete-btn ${summary.empty ? 'disabled' : 'active'}`}
+                        style={{ marginTop: '12px' }}
                       >
                         <Trash2 size={11} className="inline mr-1" /> Delete
                       </button>
+
+                      {/* Selector Menu at the bottom */}
+                      <div className="mobile-slot-selector">
+                        {[1, 2, 3].map(slotNum => (
+                          <button
+                            key={slotNum}
+                            onClick={() => setSelectedMobileSlot(slotNum)}
+                            className={`mobile-slot-btn ${selectedMobileSlot === slotNum ? 'active' : ''}`}
+                          >
+                            Slot {slotNum}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   );
-                })}
+                })() : (
+                  [1, 2, 3].map(slotNum => {
+                    const summary = getSaveSlotSummary(slotNum);
+                    return (
+                      <div key={slotNum} className="save-slot-wrapper">
+                        {summary.empty ? (
+                          <div 
+                            className="save-slot-card empty hover:scale-102 transition duration-200 cursor-pointer"
+                            onClick={() => loadSaveSlot(slotNum)}
+                          >
+                            <div className="slot-number-badge">Slot {slotNum}</div>
+                            <Sparkles size={24} className="text-gray-600 mb-2 animate-pulse" />
+                            <span className="slot-empty-title">Empty Save</span>
+                            <span className="slot-empty-desc">Begin a fresh adventure</span>
+                          </div>
+                        ) : (
+                          <div 
+                            className="save-slot-card occupied hover:scale-102 transition duration-200 cursor-pointer"
+                            onClick={() => loadSaveSlot(slotNum)}
+                          >
+                            <div className="slot-number-badge occupied">Slot {slotNum}</div>
+                            
+                            {/* Squad circles */}
+                            <div className="slot-squad-row">
+                              {summary.squadClasses.map((heroClass, idx) => (
+                                <div 
+                                  key={idx} 
+                                  className="slot-hero-circle"
+                                  title={heroClass}
+                                >
+                                  <img 
+                                    src={getHeroSprite(heroClass)} 
+                                    alt={heroClass}
+                                    className="slot-hero-sprite"
+                                  />
+                                </div>
+                              ))}
+                              {summary.squadClasses.length === 0 && (
+                                <div className="slot-hero-circle empty">
+                                  <span className="text-gray-600">-</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="slot-stats-lines">
+                              <div className="slot-stat-row">
+                                <span className="slot-stat-label">Heroes</span>
+                                <span className="slot-stat-value gold">{summary.unlockedHeroesCount}/{summary.totalHeroesCount}</span>
+                              </div>
+                              <div className="slot-stat-row">
+                                <span className="slot-stat-label">Crawls</span>
+                                <span className="slot-stat-value white">{summary.runsCount}</span>
+                              </div>
+                              <div className="slot-stat-row">
+                                <span className="slot-stat-label">Gold</span>
+                                <span className="slot-stat-value yellow">{summary.gold}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <button 
+                          disabled={summary.empty}
+                          onClick={() => setDeleteConfirmSlot(slotNum)}
+                          className={`slot-delete-btn ${summary.empty ? 'disabled' : 'active'}`}
+                        >
+                          <Trash2 size={11} className="inline mr-1" /> Delete
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               <button 

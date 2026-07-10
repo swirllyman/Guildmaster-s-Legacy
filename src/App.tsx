@@ -7,6 +7,7 @@ import { LevelUpDraft } from './components/Dungeon/LevelUpDraft';
 import { RunSummaryModal } from './components/Dungeon/RunSummaryModal';
 import { DialogueOverlay } from './components/Hub/DialogueOverlay';
 import { RotateCw, Smartphone } from 'lucide-react';
+import { useIsMobile } from './hooks/useIsMobile';
 import './App.css';
 
 const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -14,6 +15,7 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isPortrait, setIsPortrait] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const handleResize = () => {
@@ -59,6 +61,16 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
       console.warn("Could not lock orientation automatically:", err);
     }
   };
+
+  if (isMobile) {
+    return (
+      <div className="game-scale-wrapper is-mobile">
+        <div className="game-mobile-content">
+          {children}
+        </div>
+      </div>
+    );
+  }
 
   if (isPortrait) {
     return (
@@ -112,6 +124,7 @@ const GameScaleWrapper: React.FC<{ children: React.ReactNode }> = ({ children })
 
 const MainAppContent: React.FC = () => {
   const { activeSlot, activeRun, completedRunSummary, activeDialogue, showNextDialogue } = useGame();
+  const isMobile = useIsMobile();
 
   if (activeSlot === null) {
     return <MainMenu />;
@@ -120,7 +133,7 @@ const MainAppContent: React.FC = () => {
   // If showing run summary, render summary overlay
   if (completedRunSummary) {
     return (
-      <div className="bg-neutral-950 select-none" style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', boxSizing: 'border-box' }}>
+      <div className="bg-neutral-950 select-none" style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '8px' : '24px', boxSizing: 'border-box' }}>
         <RunSummaryModal />
       </div>
     );
@@ -129,7 +142,26 @@ const MainAppContent: React.FC = () => {
   // If in a run, render run layout
   if (activeRun) {
     return (
-      <div className="bg-neutral-950 select-none relative" style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', gap: '24px', padding: '24px', boxSizing: 'border-box' }}>
+      <div 
+        className="bg-neutral-950 select-none relative" 
+        style={isMobile ? {
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          padding: '6px',
+          boxSizing: 'border-box'
+        } : {
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px',
+          padding: '24px',
+          boxSizing: 'border-box'
+        }}
+      >
         <LevelUpDraft />
         
         <CombatSimulation />

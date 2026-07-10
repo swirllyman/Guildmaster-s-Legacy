@@ -262,7 +262,7 @@ export const CampIntermission: React.FC = () => {
                 <span>
                   Auto-Heal & Deploy
                   {autoCampCountdown !== null && (
-                    <span className="text-amber-400/80 text-[10px] ml-1 font-mono">
+                    <span className="text-amber-400/80 text-xs ml-1 font-mono">
                       ({autoCampAction === 'heal' ? 'Healing' : 'Deploying'} in {autoCampCountdown}s...)
                     </span>
                   )}
@@ -413,7 +413,17 @@ export const CampIntermission: React.FC = () => {
           </div>
         </div>
       )}
-      {hoveredItem && <ItemTooltip item={hoveredItem} coords={mouseCoords} />}
+      {hoveredItem && (
+        <ItemTooltip 
+          item={hoveredItem} 
+          coords={mouseCoords} 
+          compareWithItem={(() => {
+            return (selectedHero && hoveredItem.type !== 'consumable')
+              ? selectedHero.equipment[hoveredItem.type as EquipmentSlot]
+              : null;
+          })()}
+        />
+      )}
     </div>
   );
 };
